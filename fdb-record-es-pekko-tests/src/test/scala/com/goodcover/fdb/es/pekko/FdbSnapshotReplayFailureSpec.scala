@@ -240,7 +240,7 @@ class FdbSnapshotReplayFailureSpec
       expectTerminated(ref2)
     }
 
-    "handle snapshot recovery failure by crashing the actor" in {
+    "recover using an older snapshot if the latest is filtered out" in {
       val persistenceId = "snapshot-failure-test-1"
       val probe         = TestProbe()
 
@@ -290,7 +290,6 @@ class FdbSnapshotReplayFailureSpec
       // The actor might have crashed, so let's use a shorter timeout
       val finalState = expectMsgType[TestSnapshotFailureActor.State](5.seconds)
       // If we get here, the actor recovered somehow
-      println(s"Actor recovered with state: $finalState")
       finalState.events should contain allOf ("event-1", "event-2", "event-3", "event-4", "event-5")
 
       // Clean up
