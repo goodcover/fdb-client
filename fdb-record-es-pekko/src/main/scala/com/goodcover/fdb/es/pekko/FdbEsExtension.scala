@@ -66,6 +66,15 @@ class FdbEsExtensionImpl(system: ExtendedActorSystem) extends Extension {
     sessions.computeIfAbsent(parentPath, _ => createSession(parentPath))._1
   }
 
+  def snapshotFilter(sharedPath: String): Option[SnapshotFilter] = {
+    val subConfig   = system.settings.config.getConfig(sharedPath)
+    val classHelper = system.dynamicAccess
+
+    if (subConfig.getIsNull("snapshotFilter")) None
+    else
+      classHelper.createInstanceFor[SnapshotFilter](subConfig.getString("snapshotFilter"), Seq.empty).toOption
+  }
+
   private def close(executionContext: ExecutionContext) = Unsafe.unsafe { implicit u =>
     implicit val ec: ExecutionContext = executionContext
     val closing                       = sessions.values().asScala.map { case (runtime, scope) =>

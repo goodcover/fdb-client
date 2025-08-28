@@ -1,4 +1,4 @@
-//| mill-version: 1.0.3
+//| mill-version: 1.0.4
 //| mvnDeps:
 //| - com.lihaoyi::mill-contrib-scoverage:$MILL_VERSION
 //| - com.lihaoyi::mill-contrib-scalapblib:$MILL_VERSION
@@ -386,7 +386,7 @@ trait FdbRecordEsPekkoTestsModule extends CommonTests {
     Seq(`fdb-record-es`(), `fdb-record-es-pekko`(), `fdb-core-tests`(), `fdb-record-tests`(), `fdb-record-es-tests`())
   def mvnDeps    = Dependencies.pekko ++ Dependencies.pekkoTest
 
-  object test extends ZTests
+  object test extends OrgScalaTest
 
 }
 
