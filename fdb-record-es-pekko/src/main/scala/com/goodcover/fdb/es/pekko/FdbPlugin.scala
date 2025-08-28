@@ -11,7 +11,7 @@ import org.apache.pekko.persistence.*
 import org.apache.pekko.persistence.journal.*
 import org.apache.pekko.persistence.snapshot.*
 import org.apache.pekko.serialization.*
-import zio.{ Runtime, Trace, UIO, Unsafe, ZIO }
+import zio.{ RIO, Runtime, Trace, UIO, Unsafe, ZIO }
 
 import scala.concurrent.Future
 import scala.util.Try
@@ -27,8 +27,8 @@ trait FdbEventJournalConnector {
   protected def system: ActorSystem
   def cfgPath: String
 
-  protected val serialization: Serialization     = SerializationExtension(system)
-  private val fdbEsExtension: FdbEsExtensionImpl = FdbEsExtension(system)
+  protected val serialization: Serialization       = SerializationExtension(system)
+  protected val fdbEsExtension: FdbEsExtensionImpl = FdbEsExtension(system)
 
   // ZIO Staging
   protected implicit val unsafe: Unsafe = Unsafe.unsafe(a => a)
@@ -179,45 +179,52 @@ class FdbJournal(val sharedConfig: Config, val cfgPath: String)
 class FdbSnapshotStore(val cfg: Config, val cfgPath: String) extends SnapshotStore with FdbEventJournalConnector {
   override protected def system: ActorSystem = context.system
 
-  override def loadAsync(persistenceId: String, criteria: SnapshotSelectionCriteria): Future[Option[SelectedSnapshot]] =
-    unsafeRunFuture(
-      es.selectLatestSnapshot(
-        persistenceId,
-        EventsourceLayer.SnapshotSelectionCriteria(
-          maxSequenceNr = criteria.maxSequenceNr,
-          maxTimestamp = criteria.maxTimestamp,
-          minSequenceNr = criteria.minSequenceNr,
-          minTimestamp = criteria.minTimestamp
-        )
-      ).runHead
-        .flatMap { opt =>
-          ZIO
-            .fromOption(opt)
-            .flatMap { ss =>
-              ZIO.fromFuture { _ =>
-                serialization.serializerByIdentity.get(ss.getSerializationId) match {
-                  case Some(asyncSerializer: AsyncSerializer) =>
-                    Serialization.withTransportInformation(system.asInstanceOf[ExtendedActorSystem]) { () =>
-                      asyncSerializer.fromBinaryAsync(ss.payload.toByteArray, ss.getSerializationManifest)
-                    }
+  private val snapshotFilter = fdbEsExtension.snapshotFilter(cfgPath)
 
-                  case _ =>
-                    Future.successful {
-                      // Serialization.deserialize adds transport info
-                      serialization.deserialize(ss.payload.toByteArray, ss.getSerializationId, ss.getSerializationManifest).get
-                    }
-                }
-              }.mapBoth(
-                err => Option(err),
-                body => SelectedSnapshot(SnapshotMetadata(ss.persistenceId, ss.sequenceNr, ss.timestamp), body)
-              )
+  protected def loadAsyncZIO(persistenceId: String, criteria: SnapshotSelectionCriteria): RIO[Any, Option[SelectedSnapshot]] =
+    es.selectLatestSnapshot(
+      persistenceId,
+      EventsourceLayer.SnapshotSelectionCriteria(
+        maxSequenceNr = criteria.maxSequenceNr,
+        maxTimestamp = criteria.maxTimestamp,
+        minSequenceNr = criteria.minSequenceNr,
+        minTimestamp = criteria.minTimestamp
+      )
+    ).runHead
+      .flatMap { opt =>
+        ZIO
+          .fromOption(opt)
+          .flatMap { ss =>
+            ZIO.fromFuture { _ =>
+              serialization.serializerByIdentity.get(ss.getSerializationId) match {
+                case Some(asyncSerializer: AsyncSerializer) =>
+                  Serialization.withTransportInformation(system.asInstanceOf[ExtendedActorSystem]) { () =>
+                    asyncSerializer.fromBinaryAsync(ss.payload.toByteArray, ss.getSerializationManifest)
+                  }
 
+                case _ =>
+                  Future.successful {
+                    // Serialization.deserialize adds transport info
+                    serialization.deserialize(ss.payload.toByteArray, ss.getSerializationId, ss.getSerializationManifest).get
+                  }
+              }
+            }.mapBoth(
+              err => Option(err),
+              body => SelectedSnapshot(SnapshotMetadata(ss.persistenceId, ss.sequenceNr, ss.timestamp), body)
+            )
+
+          }
+          .unsome
+          .flatMap { o =>
+            snapshotFilter match {
+              case Some(value) => value.apply(o)
+              case None        => ZIO.succeed(o)
             }
-            .unsome
-        }
-    )
 
-  override def saveAsync(metadata: SnapshotMetadata, snapshot: Any): Future[Unit] = {
+          }
+      }
+
+  protected def saveAsyncZIO(metadata: SnapshotMetadata, snapshot: Any): RIO[Any, Unit] = {
     val event: AnyRef = snapshot.asInstanceOf[AnyRef]
     val serializer    = serialization.findSerializerFor(event)
     val serManifest   = Serializers.manifestFor(serializer, event)
@@ -258,13 +265,11 @@ class FdbSnapshotStore(val cfg: Config, val cfgPath: String) extends SnapshotSto
         }
     }
 
-    unsafeRunFuture(prg.flatMap { ss =>
-      es.saveSnapshot(
-        ss
-      )
-    })
-
+    prg.flatMap(ss => es.saveSnapshot(ss))
   }
+
+  override def saveAsync(metadata: SnapshotMetadata, snapshot: Any): Future[Unit] =
+    unsafeRunFuture(saveAsyncZIO(metadata, snapshot))
 
   override def deleteAsync(metadata: SnapshotMetadata): Future[Unit] =
     unsafeRunFuture(
@@ -286,8 +291,13 @@ class FdbSnapshotStore(val cfg: Config, val cfgPath: String) extends SnapshotSto
     )
   )
 
+  override def loadAsync(persistenceId: String, criteria: SnapshotSelectionCriteria): Future[Option[SelectedSnapshot]] =
+    unsafeRunFuture(loadAsyncZIO(persistenceId, criteria))
+
   override def postStop(): Unit = {
     shutdown()
     super.postStop()
   }
 }
+
+object FdbSnapshotStore {}
