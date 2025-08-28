@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package com.goodcover.fdb.record.lucene.proto;
+
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  preserve_unknown_fields: false
+};
+
+message Interests {
+  string firstName = 1;
+  string lastName = 2;
+}
+
+message ComplexQuery {
+  message Entry {
+    optional string key = 1;
+    optional string value = 2;
+  }
+
+  string id = 1;
+  string text = 2;
+  int32 coverageAmount = 3;
+  repeated Interests interests = 4;
+  repeated Entry metadata = 5;
+}
+
+
+message RecordTypeUnion {
+  ComplexQuery _ComplexQuery = 1;
+}

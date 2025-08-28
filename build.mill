@@ -1,0 +1,446 @@
+//| mill-version: 1.0.3
+//| mvnDeps:
+//| - com.lihaoyi::mill-contrib-scoverage:$MILL_VERSION
+//| - com.lihaoyi::mill-contrib-scalapblib:$MILL_VERSION
+
+package build
+
+import coursier.core.{ Attributes, Classifier, Configuration }
+import coursier.core.VariantSelector.ConfigurationBased
+import mill.*
+import mill.api.PathRef
+import mill.contrib.scalapblib.*
+import mill.contrib.scoverage.*
+import mill.javalib.api.JvmWorkerUtil
+import mill.javalib.publish.Developer
+import mill.scalalib.*
+import mill.scalalib.publish.*
+import mill.scalalib.scalafmt.*
+
+// Version definitions
+object Versions {
+  val autoService        = "1.1.1"
+  val betterMonadicFor   = "0.3.1"
+  val fdbRecord          = "4.2.8.0"
+  val foundationDb       = "7.3.43"
+  val logback            = "1.5.18"
+  val lucene             = "8.11.1"
+  val pekko              = "1.0.3"
+  val kindProjector      = "0.13.3"
+  val jsoniterScala      = "2.37.5"
+  val pprint             = "0.9.0"
+  val protobuf           = "3.25.1"
+  val rezilience         = "0.10.4"
+  val scala213           = "2.13.16"
+  val scala3             = "3.3.4"
+  val scalapbSpark       = "1.0.5"
+  val scoverage          = "2.3.0"
+  val sourcecode         = "0.4.2"
+  val spark              = "3.5.5"
+  val spark3Encoders     = "0.3.2"
+  val scalatest          = "3.2.19"
+  val zio                = "2.1.19"
+  val zioReactiveStreams = "2.0.2"
+  val scalapb            = "0.11.15"
+
+  val JavaVersion = "11"
+
+  val scalaVersions = Seq(scala213, scala3)
+}
+
+// Common settings trait
+trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule with CrossSbtModule with PublishModule { outer =>
+
+  def scalacOptions = Task {
+    if (outer.scalaVersion() == Versions.scala213) {
+      Seq(
+        "-Ymacro-annotations",
+        "-release",
+        Versions.JavaVersion,
+        "-Ypatmat-exhaust-depth",
+        "40",
+        "-Xsource:3",
+        "-Wconf:src=src_managed/.*:silent",
+        "-Wconf:src=org/apache/spark/sql/proto/.*:silent"
+      )
+    } else {
+      Seq(
+        "-release",
+        Versions.JavaVersion,
+        "-source:future",
+        "-Wconf:src=src_managed/.*:silent",
+        "-Wconf:src=org/apache/spark/sql/proto/.*:silent"
+      )
+    }
+  }
+
+  def javacOptions = Seq("-source", Versions.JavaVersion, "-target", Versions.JavaVersion, "-proc:full")
+
+  def scalacPluginMvnDeps = Task {
+    if (outer.scalaVersion() == Versions.scala213)
+      Seq(
+        mvn"org.scala-lang:scala-reflect:${Versions.scala213}",
+        mvn"com.olegpy::better-monadic-for:${Versions.betterMonadicFor}",
+        mvn"org.typelevel:::kind-projector:${Versions.kindProjector}"
+      )
+    else Seq.empty
+  }
+
+  // Publishing configuration
+  def publishVersion = "0.3.2-SNAPSHOT"
+
+  def pomSettings = PomSettings(
+    description = "FDB Client Library",
+    organization = "com.goodcover.fdb",
+    url = "https://github.com/goodcover/fdb-client",
+    licenses = Seq(License.`Apache-2.0`),
+    versionControl = VersionControl.github("goodcover", "fdb-client"),
+    developers = Seq(
+      Developer( //
+        "dispalt",
+        "Dan Di Spaltro",
+        "https://github.com/dispalt",
+        Some("https://github.com/goodcover"),
+        Some("https://www.goodcover.com"),
+      )
+    )
+  )
+
+  // Test framework configuration
+  def testFramework = "zio.test.sbt.ZTestFramework"
+
+  // Coverage exclusions
+  def scoverageExcludedPackages = Seq(
+    raw"com\.goodcover\.fdb\.record\.es\.proto\.*",
+    raw"org\.apache\.spark\.sql\.proto\.*",
+    raw"com\.goodcover\.fdb\.record\.lucene\.proto\.*",
+    ".*Test.*",
+    ".*javadsl.*"
+  )
+
+  def scoverageExcludedFiles = Seq.empty[String]
+
+  private def isScala3: Task[Boolean] = Task.Anon(JvmWorkerUtil.isScala3(outer.scalaVersion()))
+  def scoverageVersion                = Versions.scoverage
+
+  override lazy val scoverage = new ScoverageData {
+    override def scalacOptions: T[Seq[String]] =
+      Task {
+        val excludeFilePrefix = if (isScala3()) "-coverage-exclude-files" else "-P:scoverage:excludedFiles"
+        val excludePkgsPrefix = if (isScala3()) "-coverage-exclude-pkg" else "-P:scoverage:excludedPackages"
+
+        val excludePkgs  =
+          if (scoverageExcludedPackages.isEmpty) Seq.empty
+          else Seq(s"$excludePkgsPrefix:${scoverageExcludedPackages.mkString(";")}")
+        val excludeFiles =
+          if (scoverageExcludedFiles.isEmpty) Seq.empty
+          else Seq(s"$excludeFilePrefix:${scoverageExcludedFiles.mkString(";")}")
+
+        val extras = excludeFiles ++ excludePkgs
+
+        super.scalacOptions() ++ extras
+      }
+  }
+
+  trait BaseTest extends SbtTests with ScoverageTests {
+
+    /**
+     * Alter classpath from upstream modules by replacing in-place outer module
+     * classes folder by the outer.scoverage classes folder and adding the
+     * scoverage runtime dependency.
+     */
+    override def runClasspath: T[Seq[PathRef]] = Task {
+      val moduleDeps = Task
+        .sequence((outer.moduleDeps ++ outer.transitiveModuleDeps).map {
+          case m: ScoverageModule =>
+            m.compile.zip(m.scoverage.compile)
+          case m: Module          =>
+            m.compile.zip(m.compile)
+        })()
+        .map { case (m, c) => m.classes -> c.classes }
+        .toMap
+
+      val outerClassesPath          = outer.compile().classes
+      val outerScoverageClassesPath = outer.scoverage.compile().classes
+      (super.runClasspath().map { path =>
+        if (outerClassesPath == path) outerScoverageClassesPath
+        else if (moduleDeps.contains(path)) moduleDeps(path)
+        else path
+      } ++ defaultResolver().classpath(outer.scoverageRuntimeDeps())).distinct
+    }
+  }
+
+  trait ZTests extends BaseTest with TestModule.ZioTest
+
+  trait OrgScalaTest extends BaseTest with TestModule.ScalaTest
+
+}
+
+trait ScalaPBModuleSbt extends ScalaPBModule {
+
+  def scalaPBSources: T[Seq[PathRef]] = Task.Sources(
+    moduleDir / "src/main/protobuf"
+  )
+
+  def scalaPBVersion         = Versions.scalapb
+  def scalaPBFlatPackage     = true
+  def scalaPBJavaConversions = true
+  def scalaPBGrpc            = false
+  def scalaPBScala3Sources   = true
+  def scalaPBSearchDeps      = true
+
+  override def generatedSources: Task.Simple[Seq[PathRef]] = Task(super.generatedSources() :+ compileJava())
+
+  def compileJava: T[PathRef] = Task {
+    mill.api.Result.Success(PathRef(Task.dest))
+  }
+
+  override def scalaPBAdditionalArgs =
+    Seq(s"--java_out=${compileJava().path}")
+
+}
+
+trait CommonTests extends CommonModule {
+  // placeholder
+}
+
+// Core dependencies
+object Dependencies {
+  val all = Seq(
+    mvn"org.foundationdb:fdb-java:${Versions.foundationDb}",
+    mvn"dev.zio::zio:${Versions.zio}",
+    mvn"dev.zio::zio-streams:${Versions.zio}",
+    mvn"org.scala-lang:scala-reflect:${Versions.scala213}",
+    mvn"nl.vroste::rezilience:${Versions.rezilience}",
+    mvn"com.google.protobuf:protobuf-java:${Versions.protobuf}"
+  )
+
+  val test = Seq(
+    mvn"dev.zio::zio-test:${Versions.zio}",
+    mvn"dev.zio::zio-test-sbt:${Versions.zio}",
+    mvn"dev.zio::zio-test-magnolia:${Versions.zio}"
+  )
+
+  val record = Seq(
+    mvn"org.foundationdb:fdb-record-layer-core:${Versions.fdbRecord}",
+    mvn"com.lihaoyi::sourcecode:${Versions.sourcecode}",
+    mvn"com.thesamet.scalapb::scalapb-runtime:${Versions.scalapb}"
+  )
+
+  val recordLucene = Seq(
+    mvn"org.foundationdb:fdb-record-layer-lucene:${Versions.fdbRecord}",
+    mvn"org.apache.lucene:lucene-queryparser:${Versions.lucene}",
+    mvn"org.apache.lucene:lucene-highlighter:${Versions.lucene}",
+    mvn"com.thesamet.scalapb::scalapb-runtime:${Versions.scalapb}",
+    mvn"com.google.auto.service:auto-service:${Versions.autoService}"
+  )
+
+  val pekko = Seq(
+    mvn"org.apache.pekko::pekko-persistence-typed:${Versions.pekko}",
+    mvn"dev.zio::zio-interop-reactivestreams:${Versions.zioReactiveStreams}"
+  )
+
+  val pekkoTest = Seq(
+    mvn"org.apache.pekko::pekko-persistence-testkit:${Versions.pekko}",
+    mvn"org.apache.pekko::pekko-persistence-tck:${Versions.pekko}",
+    mvn"org.apache.pekko::pekko-stream-testkit:${Versions.pekko}",
+    mvn"ch.qos.logback:logback-classic:${Versions.logback}"
+  )
+
+  def mkConfig(dep: Dep): Seq[Dep] = Seq(
+    dep,
+    dep.copy(dep =
+      dep.dep
+        .withVariantSelector(ConfigurationBased(Configuration.join(Configuration.provided, Configuration.test)))
+        .withAttributes(Attributes.empty.withClassifier(Classifier("tests")))
+    )
+  )
+
+  def spark(scalaVersion: String) = mkConfig(mvn"org.apache.spark::spark-core:${Versions.spark}".withDottyCompat(scalaVersion)) ++
+    mkConfig(mvn"org.apache.spark::spark-catalyst:${Versions.spark}".withDottyCompat(scalaVersion)) ++
+    mkConfig(mvn"org.apache.spark::spark-sql:${Versions.spark}".withDottyCompat(scalaVersion)) ++
+    mkConfig(mvn"org.apache.spark::spark-protobuf:${Versions.spark}".withDottyCompat(scalaVersion)) ++ Seq(
+      mvn"org.scalatest::scalatest:${Versions.scalatest}",
+      mvn"ch.qos.logback:logback-classic:${Versions.logback}".withConfiguration("provided"),
+      mvn"com.lihaoyi::pprint:${Versions.pprint}",
+      mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}".withDottyCompat(scalaVersion),
+      mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
+      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
+    ) ++ (
+      if (scalaVersion == Versions.scala3)
+        Seq(
+          mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}".withConfiguration("test")
+        )
+      else Seq.empty
+    )
+}
+
+// Repository configuration
+trait CustomRepositories extends SbtModule {
+  def repositoriesTask = Task.Anon {
+    super.repositoriesTask()
+  }
+}
+
+// Core module with Protocol Buffers
+object `fdb-core` extends Cross[FdbCoreModule](Versions.scalaVersions)
+
+trait FdbCoreModule extends CommonModule {
+  def mvnDeps = Dependencies.all
+
+  def generatedSources: T[Seq[PathRef]] = Task {
+    os.write(
+      Task.dest / s"BuildInfo.scala",
+      s"""
+         |package com.goodcover.fdb
+         |object BuildInfo {
+         |  val scalaVersion = "${scalaVersion()}"
+         |}
+        """.stripMargin
+    )
+
+    Seq(PathRef(Task.dest))
+  }
+}
+
+// Core tests module
+object `fdb-core-tests` extends Cross[FdbCoreTestsModule](Versions.scalaVersions)
+
+trait FdbCoreTestsModule extends CommonTests {
+  def moduleDeps = Seq(`fdb-core`())
+  def mvnDeps    = Dependencies.test
+
+  object test extends ZTests
+}
+
+// Record module
+object `fdb-record` extends Cross[FdbRecordModule](Versions.scalaVersions)
+
+trait FdbRecordModule extends CommonModule with CustomRepositories {
+  def moduleDeps = Seq(`fdb-core`())
+  def mvnDeps    = Dependencies.record
+}
+
+// Record tests module
+object `fdb-record-tests` extends Cross[FdbRecordTestsModule](Versions.scalaVersions)
+
+trait FdbRecordTestsModule extends CommonModule {
+  def moduleDeps = Seq(`fdb-record`(), `fdb-core-tests`())
+
+  object test extends ZTests {}
+
+}
+
+// Record Lucene module
+object `fdb-record-lucene` extends Cross[FdbRecordLuceneModule](Versions.scalaVersions)
+
+trait FdbRecordLuceneModule extends CommonModule with CustomRepositories {
+  def moduleDeps = Seq(`fdb-record`())
+  def mvnDeps    = Dependencies.recordLucene
+}
+
+// Record Lucene tests module with Protocol Buffers
+object `fdb-record-lucene-tests` extends Cross[FdbRecordLuceneTestsModule](Versions.scalaVersions)
+
+trait FdbRecordLuceneTestsModule extends CommonTests with ScalaPBModuleSbt {
+  def moduleDeps = Seq(`fdb-record-lucene`(), `fdb-core-tests`(), `fdb-record-tests`())
+  def mvnDeps    = Dependencies.recordLucene
+
+  object test extends ZTests {}
+}
+
+// Record ES module with Protocol Buffers
+object `fdb-record-es` extends Cross[FdbRecordEsModule](Versions.scalaVersions)
+
+trait FdbRecordEsModule extends CommonModule with ScalaPBModuleSbt {
+  def moduleDeps = Seq(`fdb-record`())
+  def mvnDeps    = Dependencies.record
+
+}
+
+// Record ES tests module
+object `fdb-record-es-tests` extends Cross[FdbRecordEsTestsModule](Versions.scalaVersions)
+
+trait FdbRecordEsTestsModule extends CommonTests {
+  def moduleDeps = Seq(`fdb-record-es`(), `fdb-core-tests`(), `fdb-record-tests`())
+
+  object test extends ZTests {}
+
+}
+
+// Record ES Pekko module
+object `fdb-record-es-pekko` extends Cross[FdbRecordEsPekkoModule](Versions.scalaVersions)
+
+trait FdbRecordEsPekkoModule extends CommonModule {
+  def moduleDeps = Seq(`fdb-record-es`())
+  def mvnDeps    = Dependencies.pekko
+}
+
+// Record ES Pekko tests module
+object `fdb-record-es-pekko-tests` extends Cross[FdbRecordEsPekkoTestsModule](Versions.scalaVersions)
+
+trait FdbRecordEsPekkoTestsModule extends CommonTests {
+  def moduleDeps =
+    Seq(`fdb-record-es`(), `fdb-record-es-pekko`(), `fdb-core-tests`(), `fdb-record-tests`(), `fdb-record-es-tests`())
+  def mvnDeps    = Dependencies.pekko ++ Dependencies.pekkoTest
+
+  object test extends ZTests
+
+}
+
+// Record ES Pekko IT module
+object `fdb-record-es-pekko-it` extends Cross[FdbRecordEsPekkoItModule](Versions.scalaVersions)
+
+trait FdbRecordEsPekkoItModule extends CommonTests {
+  def moduleDeps = Seq(
+    `fdb-record-es`(),
+    `fdb-record-es-pekko`(),
+    `fdb-core-tests`(),
+    `fdb-record-tests`(),
+    `fdb-record-es-tests`(),
+    `fdb-record-es-pekko-tests`(),
+  )
+
+  def mvnDeps  = Dependencies.pekko
+  def forkArgs = Seq("-Xmx2g")
+
+  object test extends OrgScalaTest
+}
+
+// Spark module
+object `fdb-spark` extends Cross[FdbSparkModule](Versions.scalaVersions)
+
+trait FdbSparkModule extends CommonModule {
+  def moduleDeps     = Seq(`fdb-core`(), `fdb-record-es`())
+  def testModuleDeps = Seq(`fdb-core-tests`, `fdb-record-es-tests`)
+  def mvnDeps        = Dependencies.spark(scalaVersion())
+  def forkArgs       = Seq("-Xmx2g")
+}
+
+// Spark tests module
+object `fdb-spark-tests` extends Cross[FdbSparkTestsModule](Versions.scalaVersions)
+
+trait FdbSparkTestsModule extends CommonTests {
+  def moduleDeps = Seq( //
+    `fdb-core`(),
+    `fdb-record-es`(),
+    `fdb-spark`(),
+    `fdb-core-tests`(),
+    `fdb-record-es-tests`(),
+  )
+  def mvnDeps    = Dependencies.spark(scalaVersion())
+
+  object test extends ZTests with CrossSbtTests {
+
+    def forkArgs = Task {
+      val env      = Task.env
+      val javaOpts = env.get("JAVA_OPTS").toList.flatMap(_.split('\n'))
+      Seq("-Xmx2g") ++ javaOpts
+    }
+  }
+}
+
+object scoverage extends ScoverageReport {
+  override def scalaVersion     = Versions.scala213
+  override def scoverageVersion = Versions.scoverage
+}

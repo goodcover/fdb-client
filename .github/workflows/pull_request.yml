@@ -1,0 +1,65 @@
+name: Pull Request
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [master]
+
+jobs:
+
+  tests:
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
+    strategy:
+      matrix:
+        scala-version: ["2.13.16", "3.3.4"]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Setup caching and environment
+        uses: coursier/cache-action@v6
+        id: coursier-cache
+      - name: Setup FoundationDB
+        uses: ./actions/setup-fdb
+        with:
+          fdb_version: 7.3.43
+      - name: Setup Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Check Nix flake
+        uses: DeterminateSystems/flake-checker-action@main
+      - name: Prepare Nix environment
+        run: nix develop . --command printenv
+      - name: Run tests for Scala ${{ matrix.scala-version }}
+        run: nix develop . --command ./mill __[${{ matrix.scala-version }}].test
+      - name: Gather coverage report for Scala ${{ matrix.scala-version }}
+        run: nix develop . --command ./mill scoverage.xmlReportAll
+      - name: Upload coverage report for Scala ${{ matrix.scala-version }}
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: false
+          files: out/scoverage/xmlReportAll.dest/scoverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: scala-${{ matrix.scala-version }}
+
+      - name: Publish Test Report for Scala ${{ matrix.scala-version }}
+        uses: mikepenz/action-junit-report@v5
+        if: always() # always run even if the previous step fails
+        with:
+          fail_on_failure: false
+          include_passed: false
+          detailed_summary: true
+          annotate_only: true
+          require_tests: false
+          report_paths: 'out/**/test-report.xml'
+      - uses: codecov/test-results-action@v1
+        with:
+          fail_ci_if_error: false # optional (default = false)
+          name: codecov-scala-${{ matrix.scala-version }} # optional
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
