@@ -50,8 +50,7 @@ class TestSnapshotFailureActor(val persistenceId: String, tags: Set[String], pro
     with ActorLogging {
   import TestSnapshotFailureActor.*
 
-  var snapshotPoisoned = false
-  var state            = State()
+  var state = State()
 
   def receiveRecover: Receive = {
     case SnapshotOffer(metadata, snapshot) =>
