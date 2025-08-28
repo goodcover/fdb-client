@@ -89,7 +89,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   // Publishing configuration
-  def publishVersion = "0.3.2-SNAPSHOT"
+  def publishVersion = "0.4.0"
 
   def pomSettings = PomSettings(
     description = "FDB Client Library",
