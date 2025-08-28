@@ -31,8 +31,10 @@ object Versions {
   val pprint             = "0.9.0"
   val protobuf           = "3.25.1"
   val rezilience         = "0.10.4"
+  // Keep the pull_request.yml up to date
   val scala213           = "2.13.16"
-  val scala3             = "3.3.4"
+  // Keep the pull_request.yml up to date
+  val scala3             = "3.3.6"
   val scalapbSpark       = "1.0.5"
   val scoverage          = "2.3.0"
   val sourcecode         = "0.4.2"

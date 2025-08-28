@@ -1,6 +1,9 @@
 ## Changes
 
-### 0.3.1 - NEXT
+### 0.3.2
+ - Moved to [github releases](http://github.com/goodcover/fdb-client/releases)
+
+### 0.3.1
  - Decent lucene changes to support new features, it actually works pretty great.
  - zio to 2.1.19
  - Auto-saving metadata on every transaction it's not present
