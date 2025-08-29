@@ -296,7 +296,9 @@ trait FdbCoreModule extends CommonModule {
       s"""
          |package com.goodcover.fdb
          |object BuildInfo {
-         |  val scalaVersion = "${scalaVersion()}"
+         |  val scalaVersion     = "${scalaVersion()}"
+         |  val fdbRecordVersion = "${Versions.fdbRecord}"
+         |  val fdbVersion       = "${Versions.foundationDb}"
          |}
         """.stripMargin
     )
