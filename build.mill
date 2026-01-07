@@ -277,7 +277,9 @@ object Dependencies {
       ) ++ (
         if (scalaVersion == Versions.scala3)
           Seq(
-            mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}".withConfiguration("test")
+            mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}"
+              .withConfiguration("test")
+              .exclude("com.google.protobuf" -> "protobuf-java")
           )
         else Seq.empty
       ) ++ (
