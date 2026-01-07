@@ -29,7 +29,7 @@ object Versions {
   val kindProjector      = "0.13.4"
   val jsoniterScala      = "2.37.5"
   val pprint             = "0.9.0"
-  val protobuf           = "3.25.1"
+  val protobuf           = "3.25.8"
   val rezilience         = "0.10.4"
   // Keep the pull_request.yml up to date
   val scala213           = "2.13.18"
@@ -93,7 +93,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   // Publishing configuration
-  def publishVersion = "0.4.0"
+  def publishVersion = "0.5.0-SNAPSHOT"
 
   def pomSettings = PomSettings(
     description = "FDB Client Library",
@@ -270,8 +270,6 @@ object Dependencies {
       mkConfig(mvn"org.apache.spark::spark-sql:$sparkVersion".withDottyCompat(scalaVersion)) ++
       mkConfig(mvn"org.apache.spark::spark-protobuf:$sparkVersion".withDottyCompat(scalaVersion)) ++ Seq(
         mvn"org.scalatest::scalatest:${Versions.scalatest}",
-//        mvn"ch.qos.logback:logback-classic:${Versions.logback}".withConfiguration("provided"),
-        mvn"com.lihaoyi::pprint:${Versions.pprint}",
         mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
         mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
       ) ++ (
