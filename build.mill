@@ -29,7 +29,7 @@ object Versions {
   val kindProjector      = "0.13.3"
   val jsoniterScala      = "2.37.5"
   val pprint             = "0.9.0"
-  val protobuf           = "3.25.1"
+  val protobuf           = "3.25.8"
   val rezilience         = "0.10.4"
   // Keep the pull_request.yml up to date
   val scala213           = "2.13.16"
@@ -46,7 +46,8 @@ object Versions {
   val zioReactiveStreams = "2.0.2"
   val scalapb            = "0.11.15"
 
-  val JavaVersion = "11"
+  val JavaVersion      = "11"
+  val SparkJavaVersion = "17"
 
   val scalaVersions = Seq(scala213, scala3)
 }
@@ -253,12 +254,14 @@ object Dependencies {
   )
 
   def mkConfig(dep: Dep): Seq[Dep] = Seq(
-    dep,
-    dep.copy(dep =
-      dep.dep
-        .withVariantSelector(ConfigurationBased(Configuration.join(Configuration.provided, Configuration.test)))
-        .withAttributes(Attributes.empty.withClassifier(Classifier("tests")))
-    )
+    dep.exclude("com.google.protobuf" -> "protobuf-java"),
+    dep
+      .copy(dep =
+        dep.dep
+          .withVariantSelector(ConfigurationBased(Configuration.join(Configuration.provided, Configuration.test)))
+          .withAttributes(Attributes.empty.withClassifier(Classifier("tests")))
+      )
+      .exclude("com.google.protobuf"  -> "protobuf-java")
   )
 
   def spark(scalaVersion: String, sparkVersion: String) =
@@ -439,7 +442,7 @@ trait FdbSparkModule35 extends FdbSparkModule {
 }
 
 trait FdbSparkModule4 extends FdbSparkModule {
-  override def JavaVersion: String = "21"
+  override def JavaVersion: String = Versions.SparkJavaVersion
 
   override def sparkVersion = Versions.spark4
 }
@@ -477,7 +480,7 @@ trait FdbSparkTestsModule35 extends FdbSparkTestsModule {
 }
 
 trait FdbSparkTestsModule4 extends FdbSparkTestsModule {
-  override def JavaVersion: String = "21"
+  override def JavaVersion: String = Versions.SparkJavaVersion
 
   override def sparkVersion = Versions.spark4
 

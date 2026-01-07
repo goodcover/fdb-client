@@ -2,7 +2,7 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:nixos/nixpkgs";
-    graal.url = "github:nixos/nixpkgs/d9f258945d3532e399d7f73fcd9b6fa5b4393e01";
+    graal.url = "github:nixos/nixpkgs/336eda0d07dc5e2be1f923990ad9fdb6bc8e28e3";
   };
 
   outputs = { self, flake-utils, nixpkgs, graal }:
