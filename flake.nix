@@ -2,7 +2,7 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:nixos/nixpkgs";
-    graal.url = "github:nixos/nixpkgs/d9f258945d3532e399d7f73fcd9b6fa5b4393e01";
+    graal.url = "github:nixos/nixpkgs/e6f23dc08d3624daab7094b701aa3954923c6bbb";
   };
 
   outputs = { self, flake-utils, nixpkgs, graal }:
@@ -44,7 +44,7 @@
 
           FDB_LIBRARY_PATH_FDB_C = FDB_LIBRARY_PATH_FDB_C;
 
-          JAVA_OPTS = ''-DFDB_LIBRARY_PATH_FDB_C=${FDB_LIBRARY_PATH_FDB_C}
+          JAVA_OPTS = ''${lib.optionalString (FDB_LIBRARY_PATH_FDB_C != "") "-DFDB_LIBRARY_PATH_FDB_C=${FDB_LIBRARY_PATH_FDB_C}"}
 --add-opens=java.base/java.lang=ALL-UNNAMED
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
 --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
