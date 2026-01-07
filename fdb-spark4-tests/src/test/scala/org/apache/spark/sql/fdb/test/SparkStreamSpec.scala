@@ -176,7 +176,7 @@ class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutur
 
                           ds.map(row => row.getAs[java.lang.Long](2))(enc.encoderB)
                         }
-        getter        = getFirstNTimestamps(toInsert, size)
+        getter        = getFirstNTimestamps(toInsert, size) _
         _            <- ZIO.attempt {
                           import ss.implicits.*
 
