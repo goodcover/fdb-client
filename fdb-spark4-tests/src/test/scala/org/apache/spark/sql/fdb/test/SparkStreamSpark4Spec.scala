@@ -17,7 +17,7 @@ import org.apache.spark.sql.{ Encoder, SparkSession }
 import org.apache.spark.sql.fdb.{ FdbProvider, ReadConf, SparkFdbConfig, TestEncoderImpl }
 import org.apache.spark.sql.fdb.ReadConf.KeySpaceProvider
 import org.apache.spark.sql.fdb.stream.{ FdbIndexPartition, FdbMicrobatchProvider, MicrobatchConfig }
-import org.apache.spark.sql.fdb.test.SparkStreamSpec.ZIOError
+import org.apache.spark.sql.fdb.test.SparkStreamSpark4Spec.ZIOError
 import org.apache.spark.sql.streaming.util.StreamManualClock
 import org.apache.spark.sql.streaming.{ StreamTest, Trigger }
 import org.apache.spark.sql.test.SharedSparkSession
@@ -30,7 +30,7 @@ import zio.{ Chunk, Exit, Random, Runtime, Trace, Unsafe, ZIO, ZLayer }
 import java.nio.file.Paths
 import scala.concurrent.Future
 
-class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutures {
+class SparkStreamSpark4Spec extends StreamTest with SharedSparkSession with ScalaFutures {
 
   override implicit def patienceConfig: PatienceConfig = PatienceConfig(600.seconds)
 
@@ -44,10 +44,10 @@ class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutur
       ZIO.attempt {
         val reader = spark.readStream
           .format(FdbProvider.FDB_PLAIN)
-          .option(SparkFdbConfig.LAYER_PROVIDER_CLASS, SparkStreamSpec.layerCls)
+          .option(SparkFdbConfig.LAYER_PROVIDER_CLASS, SparkStreamSpark4Spec.layerCls)
           .option(ReadConf.RECORD_TYPE, "PersistentRepr")
           .option("searchclusterfile", "true")
-          .option(MicrobatchConfig.MICROBATCH_PROVIDER_CLASS, SparkStreamSpec.microbatchCls)
+          .option(MicrobatchConfig.MICROBATCH_PROVIDER_CLASS, SparkStreamSpark4Spec.microbatchCls)
           .option(MicrobatchConfig.MICROBATCH_MAX_BATCH_SIZE, microBatchSize) // per partition
           // Next options are local to the configuration classes
           .option("testId", testId)
@@ -163,7 +163,7 @@ class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutur
                           val enc = new TestEncoderImpl(spark)
 
                           val ds = read
-                            .load(SparkStreamSpec.provideCls)
+                            .load(SparkStreamSpark4Spec.provideCls)
 
                           val toDisplay =
                             ds.map { row =>
@@ -232,7 +232,7 @@ class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutur
 
 }
 
-object SparkStreamSpec {
+object SparkStreamSpark4Spec {
 
   /** This annoyingly relies on the scheme from tests to create this. */
   private[test] class Provide(options: Map[String, String]) extends KeySpaceProvider {

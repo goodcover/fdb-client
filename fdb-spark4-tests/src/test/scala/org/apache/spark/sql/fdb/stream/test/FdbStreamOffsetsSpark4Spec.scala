@@ -7,7 +7,7 @@ import org.apache.spark.sql.fdb.test.SharedZIOSparkSpecDefault
 import zio.Scope
 import zio.test.*
 
-object FdbStreamOffsetsSpec extends SharedZIOSparkSpecDefault {
+object FdbStreamOffsetsSpark4Spec extends SharedZIOSparkSpecDefault {
 
   override def spec: Spec[SparkSession & TestEnvironment & Scope, Any] = suite("FdbStreamOffsetSpec")(
     test("test serialization") {

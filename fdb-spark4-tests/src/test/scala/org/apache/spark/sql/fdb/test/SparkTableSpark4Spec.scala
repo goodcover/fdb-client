@@ -33,7 +33,7 @@ import zio.test.{ Spec, TestAspect, TestEnvironment, assertTrue }
 
 import java.util.concurrent.TimeUnit
 
-object SparkTableSpec extends SharedZIOSparkSpecDefault {
+object SparkTableSpark4Spec extends SharedZIOSparkSpecDefault {
 
   /** This annoyingly relies on the scheme from tests to create this. */
   private[test] class Provide(foo: Map[String, String]) extends KeySpaceProvider {

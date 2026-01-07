@@ -12,7 +12,7 @@ import zio.{ Scope, ZLayer }
 
 import scala.annotation.unused
 
-object ProviderSpec extends ZIOSpecDefault {
+object ProviderSpark4Spec extends ZIOSpecDefault {
 
   class Foo(@unused map: Map[String, String]) extends KeySpaceProvider with LayerProvider {
     private def hierarchy =

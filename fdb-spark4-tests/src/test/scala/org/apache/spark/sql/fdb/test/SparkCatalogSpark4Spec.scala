@@ -11,7 +11,7 @@ import zio.stream.ZStream
 import zio.test.*
 import zio.{ Scope, ZIO }
 
-object SparkCatalogSpec extends SharedZIOSparkSpecDefault {
+object SparkCatalogSpark4Spec extends SharedZIOSparkSpecDefault {
 
   override def spec: Spec[SparkSession & TestEnvironment & Scope, Any] =
     (suite("SparkCatalogSpec")(
@@ -28,14 +28,14 @@ object SparkCatalogSpec extends SharedZIOSparkSpecDefault {
                          val seqNr = i % 10
                          val id    = i / 10
                          val tagId = i / 15 + 1
-                         SparkTableSpec.dumbAppend(
+                         SparkTableSpark4Spec.dumbAppend(
                            s"pid-$id",
                            seqNr.toLong,
                            s"tag$tagId" :: Nil,
                          )
                        }
                        .runCollect
-          testId  <- SparkTableSpec.getTestValue
+          testId  <- SparkTableSpark4Spec.getTestValue
           cname    = "fdb1"
           cns      = "ns1"
           _       <- ZIO.attempt {
@@ -46,8 +46,8 @@ object SparkCatalogSpec extends SharedZIOSparkSpecDefault {
                        val ns1Ns   = s"spark.sql.catalog.$cname.namespace.$cns"
                        session.conf
                        session.conf.set(catalog, FdbCatalog.CATALOG)
-                       session.conf.set(s"$catalog.$LAYER_PROVIDER_CLASS", SparkTableSpec.layerCls)
-                       session.conf.set(s"$ns1Ns.$KEYSPACE_PROVIDER_CLASS", SparkTableSpec.provideCls)
+                       session.conf.set(s"$catalog.$LAYER_PROVIDER_CLASS", SparkTableSpark4Spec.layerCls)
+                       session.conf.set(s"$ns1Ns.$KEYSPACE_PROVIDER_CLASS", SparkTableSpark4Spec.provideCls)
                        session.conf.set(s"$ns1Ns.testid", testId)
 
                        session.conf.set(s"$catalog.$SEARCH_CLUSTER_FILE", "true")
