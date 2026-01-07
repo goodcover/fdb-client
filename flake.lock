@@ -20,17 +20,17 @@
     },
     "graal": {
       "locked": {
-        "lastModified": 1750111231,
-        "narHash": "sha256-3a7Tha/RwYlzH/v3PJrG7+HjOj4c6YOv2K8sqdGsHVQ=",
+        "lastModified": 1724791385,
+        "narHash": "sha256-SIvdrh0+gvli65S3pYBnFmo3FIG7VqTBINeEvQTA0IE=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "e6f23dc08d3624daab7094b701aa3954923c6bbb",
+        "rev": "d9f258945d3532e399d7f73fcd9b6fa5b4393e01",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "e6f23dc08d3624daab7094b701aa3954923c6bbb",
+        "rev": "d9f258945d3532e399d7f73fcd9b6fa5b4393e01",
         "type": "github"
       }
     },

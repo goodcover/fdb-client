@@ -424,6 +424,8 @@ trait FdbRecordEsPekkoItModule extends CommonTests {
 // Spark module
 object `fdb-spark` extends Cross[FdbSparkModule35](Versions.scalaVersions)
 
+object `fdb-spark4` extends Cross[FdbSparkModule4](Versions.scalaVersions)
+
 trait FdbSparkModule extends CommonModule {
   def sparkVersion: String
   def moduleDeps     = Seq(`fdb-core`(), `fdb-record-es`())
@@ -437,13 +439,9 @@ trait FdbSparkModule35 extends FdbSparkModule {
 }
 
 trait FdbSparkModule4 extends FdbSparkModule {
-  override def JavaVersion: String = "17"
+  override def JavaVersion: String = "21"
 
   override def sparkVersion = Versions.spark4
-}
-
-object `fdb-spark4` extends Cross[FdbSparkModule4](Versions.scalaVersions) {
-  def sparkVersion = Versions.spark
 }
 
 // Spark tests module
@@ -479,7 +477,7 @@ trait FdbSparkTestsModule35 extends FdbSparkTestsModule {
 }
 
 trait FdbSparkTestsModule4 extends FdbSparkTestsModule {
-  override def JavaVersion: String = "17"
+  override def JavaVersion: String = "21"
 
   override def sparkVersion = Versions.spark4
 
