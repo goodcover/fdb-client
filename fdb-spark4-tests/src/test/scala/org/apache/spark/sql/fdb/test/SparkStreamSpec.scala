@@ -119,10 +119,11 @@ class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutur
   private[test] def getTestValue: ZIO[EventsourceConfig, Nothing, String] =
     ZIO.serviceWith[EventsourceConfig].apply(_.keyspace.getDirectory("tests").getValue.asInstanceOf[String])
 
-  def getFirstNTimestamps(ch: zio.Chunk[PersistentRepr], batchSize: Int)(i: Int): Chunk[Long] =
-    zio.Chunk.fromIterable(ch.groupBy(_.tags.head).flatMap { case (k, chunks) =>
-      chunks.take(batchSize * i).map(_.timestamp)
-    })
+  def getFirstNTimestamps(ch: zio.Chunk[PersistentRepr], batchSize: Int): Int => Chunk[Long] =
+    i =>
+      zio.Chunk.fromIterable(ch.groupBy(_.tags.head).flatMap { case (k, chunks) =>
+        chunks.take(batchSize * i).map(_.timestamp)
+      })
 
   test("should insert") {
 
@@ -176,7 +177,7 @@ class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutur
 
                           ds.map(row => row.getAs[java.lang.Long](2))(enc.encoderB)
                         }
-        getter        = getFirstNTimestamps(toInsert, size) _
+        getter        = getFirstNTimestamps(toInsert, size)
         _            <- ZIO.attempt {
                           import ss.implicits.*
 
