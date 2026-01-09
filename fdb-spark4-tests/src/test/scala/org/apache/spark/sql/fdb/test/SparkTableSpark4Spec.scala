@@ -5,6 +5,7 @@ import com.apple.foundationdb.record.provider.foundationdb.SplitHelper
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpaceDirectory.KeyType
 import com.apple.foundationdb.record.provider.foundationdb.keyspace.{ KeySpace, KeySpaceDirectory, KeySpacePath }
 import com.apple.foundationdb.record.query.expressions.{ Query, QueryComponent }
+import org.apache.spark.sql.types.*
 import com.goodcover.fdb.*
 import com.goodcover.fdb.record.RecordDatabase.FdbRecordDatabaseFactory
 import com.goodcover.fdb.record.SharedTestLayers
@@ -23,7 +24,8 @@ import org.apache.spark.sql.fdb.{
   QueryRestrictionScheme,
   ReadConf,
   SparkFdbConfig,
-  StorageHelper
+  StorageHelper,
+  TestEncoderImpl
 }
 import org.apache.spark.sql.fdb.ReadConf.KeySpaceProvider
 import org.apache.spark.sql.{ DataFrameReader, DataFrameWriter, SaveMode, SparkSession }
@@ -247,82 +249,84 @@ object SparkTableSpark4Spec extends SharedZIOSparkSpecDefault {
           30L == resultAll,
         )
       },
-//      test("should insert") {
-//
-//        for {
-//          session   <- ZIO.service[SparkSession]
-//          service   <- ZIO.service[EventsourceLayer]
-//          _         <- service.saveMetadata
-//          _         <- service.loadMetadata.flatMap(m => ZIO.logDebug(s"Loaded metadata? $m"))
-//          payload   <-
-//            Random.nextBytes(SplitHelper.SPLIT_RECORD_SIZE * 20 + 1).map(bytes => ByteString.copyFrom(bytes.toArray))
-//          toInsert  <-
-//            ZStream
-//              .range(0, 30)
-//              .mapZIO { i =>
-//                val seqNr = i % 10
-//                val id    = i / 10
-//                val tagId = i / 15 + 1
-//                Clock.currentTime(TimeUnit.MILLISECONDS).map { ms =>
-//                  PersistentRepr(s"pid-$id", seqNr, ms, s"tag$tagId" :: Nil, payload)
-//                }
-//              }
-//              .runCollect
-//          testId    <- getTestValue
-//          _         <- ZIO.attempt {
-//                         ProtobufSql
-//                           .createDataFrame(session, toInsert)
-//                           .repartition(1)
-//                           .write
-//                           .defaults
-//                           .option("testId", testId)
-//                           .option("batchedInserts", 2)
-////                           .option("maxRequestsPerSecond", "1024")
-//                           .mode(SaveMode.Append)
-//                           .save(provideCls)
-//                       }
-//          fromSpark <- service.currentEventsById(toInsert.head.persistenceId).runCollect
-//        } yield assertTrue(fromSpark.size == 10)
-//      },
-//      test("should insert parallel 2") {
-//
-//        for {
-//          session  <- ZIO.service[SparkSession]
-//          service  <- ZIO.service[EventsourceLayer]
-//          _        <- service.saveMetadata
-//          _        <- service.loadMetadata.flatMap(m => ZIO.logDebug(s"Loaded metadata? $m"))
-//          payload  <- Random.nextBytes(20 + 1).map(bytes => ByteString.copyFrom(bytes.toArray))
-//          toInsert <-
-//            ZStream
-//              .range(0, 1000)
-//              .mapZIO { i =>
-//                val seqNr = i % 10
-//                val id    = i / 10
-//                val tagId = i / 15 + 1
-//                Clock.currentTime(TimeUnit.MILLISECONDS).map { ms =>
-//                  PersistentRepr(s"pid-$id", seqNr, ms, s"tag$tagId" :: Nil, payload)
-//                }
-//              }
-//              .runCollect
-//          testId   <- getTestValue
-//          timed    <- ZIO.attempt {
-//                        ProtobufSql
-//                          .createDataFrame(session, toInsert)
-//                          .repartition(1)
-//                          .write
-//                          .defaults
-//                          .option("testId", testId)
-//                          .option("batchedInserts", 2)
-//                          .option("parallelBatches", 16)
-//                          //                           .option("maxRequestsPerSecond", "1024")
-//                          .mode(SaveMode.Append)
-//                          .save(provideCls)
-//                      }.timed
-//
-//          _         <- ZIO.logInfo(s"Took $timed to insert")
-//          fromSpark <- service.currentEventsById(toInsert.head.persistenceId).runCollect
-//        } yield assertTrue(fromSpark.size == 10)
-//      },
+      test("should insert") {
+
+        for {
+          session   <- ZIO.service[SparkSession]
+          service   <- ZIO.service[EventsourceLayer]
+          _         <- service.saveMetadata
+          _         <- service.loadMetadata.flatMap(m => ZIO.logDebug(s"Loaded metadata? $m"))
+          payload   <-
+            Random.nextBytes(SplitHelper.SPLIT_RECORD_SIZE * 20 + 1).map(bytes => ByteString.copyFrom(bytes.toArray))
+          toInsert  <-
+            ZStream
+              .range(0, 30)
+              .mapZIO { i =>
+                val seqNr = i % 10
+                val id    = i / 10
+                val tagId = i / 15 + 1
+                Clock.currentTime(TimeUnit.MILLISECONDS).map { ms =>
+                  PersistentRepr(s"pid-$id", seqNr, ms, s"tag$tagId" :: Nil, payload)
+                }
+              }
+              .runCollect
+          testId    <- getTestValue
+          _         <- ZIO.attempt {
+                         val enc = new TestEncoderImpl(session)
+                         session
+                           .createDataset(toInsert)(enc.encoderPersistentRepr)
+                           .repartition(1)
+                           .write
+                           .defaults
+                           .option("testId", testId)
+                           .option("batchedInserts", 2)
+//                           .option("maxRequestsPerSecond", "1024")
+                           .mode(SaveMode.Append)
+                           .save(provideCls)
+                       }
+          fromSpark <- service.currentEventsById(toInsert.head.persistenceId).runCollect
+        } yield assertTrue(fromSpark.size == 10)
+      },
+      test("should insert parallel 2") {
+
+        for {
+          session  <- ZIO.service[SparkSession]
+          service  <- ZIO.service[EventsourceLayer]
+          _        <- service.saveMetadata
+          _        <- service.loadMetadata.flatMap(m => ZIO.logDebug(s"Loaded metadata? $m"))
+          payload  <- Random.nextBytes(20 + 1).map(bytes => ByteString.copyFrom(bytes.toArray))
+          toInsert <-
+            ZStream
+              .range(0, 1000)
+              .mapZIO { i =>
+                val seqNr = i % 10
+                val id    = i / 10
+                val tagId = i / 15 + 1
+                Clock.currentTime(TimeUnit.MILLISECONDS).map { ms =>
+                  PersistentRepr(s"pid-$id", seqNr, ms, s"tag$tagId" :: Nil, payload)
+                }
+              }
+              .runCollect
+          testId   <- getTestValue
+          timed    <- ZIO.attempt {
+                        val enc = new TestEncoderImpl(session)
+                        session
+                          .createDataset(toInsert.toSeq)(enc.encoderPersistentRepr)
+                          .repartition(1)
+                          .write
+                          .defaults
+                          .option("testId", testId)
+                          .option("batchedInserts", 2)
+                          .option("parallelBatches", 16)
+                          //                           .option("maxRequestsPerSecond", "1024")
+                          .mode(SaveMode.Append)
+                          .save(provideCls)
+                      }.timed
+
+          _         <- ZIO.logInfo(s"Took $timed to insert")
+          fromSpark <- service.currentEventsById(toInsert.head.persistenceId).runCollect
+        } yield assertTrue(fromSpark.size == 10)
+      },
       test("should pushdown count") {
 
         for {

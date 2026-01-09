@@ -77,8 +77,6 @@ object SparkReaderSpark4Spec extends SharedZIOSparkSpecDefault {
         }
       }
 
-      println(boundaries)
-
       BaseScanner.partitionViaPrimaryKey(None, None, boundaries).map { _range =>
         new PrimaryRestrictionScheme {
           override def range: FdbSerializableRange = _range

@@ -272,21 +272,20 @@ object Dependencies {
         mvn"org.scalatest::scalatest:${Versions.scalatest}",
         mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
         mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
-      ) ++ (
-        if (scalaVersion == Versions.scala3)
-          Seq(
-            mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}"
-              .withConfiguration("test")
-              .exclude("com.google.protobuf" -> "protobuf-java")
-          )
-        else Seq.empty
-      ) ++ (
-        if (sparkVersion == Versions.spark4)
-          Seq.empty
-        else
-          Seq(
-            mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}".withDottyCompat(scalaVersion),
-          )
+      )
+
+  def sparkTest(scalaVersion: String, sparkVersion: String) =
+    if (scalaVersion == Versions.scala3)
+      Seq(
+        mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}"
+          .withConfiguration("test")
+          .exclude("com.google.protobuf" -> "protobuf-java")
+      )
+    else
+      Seq(
+        mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}"
+          .withDottyCompat(scalaVersion)
+          .withConfiguration("test"),
       )
 }
 
@@ -455,7 +454,7 @@ object `fdb-spark4-tests` extends Cross[FdbSparkTestsModule4](Versions.scalaVers
 trait FdbSparkTestsModule extends CommonTests {
   def sparkVersion: String
 
-  def mvnDeps = Dependencies.spark(scalaVersion(), sparkVersion)
+  def mvnDeps = Dependencies.spark(scalaVersion(), sparkVersion) ++ Dependencies.sparkTest(scalaVersion(), sparkVersion)
 
   object test extends ZTests with CrossSbtTests {
 

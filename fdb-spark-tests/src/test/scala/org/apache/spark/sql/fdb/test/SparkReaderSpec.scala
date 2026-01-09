@@ -15,7 +15,6 @@ import com.google.protobuf.{ ByteString, Descriptors }
 import org.apache.spark.sql.*
 import org.apache.spark.sql.fdb.*
 import org.apache.spark.sql.fdb.ReadConf.KeySpaceProvider
-import org.apache.spark.sql.proto.ProtobufSql
 import zio.*
 import zio.stream.ZStream
 import zio.test.{ Spec, TestAspect, TestEnvironment, assertTrue }

@@ -42,7 +42,6 @@ object ProviderSpark4Spec extends ZIOSpecDefault {
         None,
         Map.empty
       )
-      println(cfg.keyspaceProvider)
 
       assertTrue(cfg.keyspaceProvider.keySpace.getRoot.getName == "/")
     }

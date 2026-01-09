@@ -23,10 +23,10 @@ import org.apache.spark.sql.fdb.{
   QueryRestrictionScheme,
   ReadConf,
   SparkFdbConfig,
-  StorageHelper
+  StorageHelper,
+  TestEncoderImpl
 }
 import org.apache.spark.sql.fdb.ReadConf.KeySpaceProvider
-import org.apache.spark.sql.proto.ProtobufSql
 import org.apache.spark.sql.{ DataFrameReader, DataFrameWriter, SaveMode, SparkSession }
 import zio.*
 import zio.stream.ZStream
@@ -271,8 +271,10 @@ object SparkTableSpec extends SharedZIOSparkSpecDefault {
               .runCollect
           testId    <- getTestValue
           _         <- ZIO.attempt {
-                         ProtobufSql
-                           .createDataFrame(session, toInsert)
+                         val enc = new TestEncoderImpl(session)
+
+                         session
+                           .createDataset(toInsert.toSeq)(enc.encoderPersistentRepr)
                            .repartition(1)
                            .write
                            .defaults
@@ -307,8 +309,10 @@ object SparkTableSpec extends SharedZIOSparkSpecDefault {
               .runCollect
           testId   <- getTestValue
           timed    <- ZIO.attempt {
-                        ProtobufSql
-                          .createDataFrame(session, toInsert)
+                        val enc = new TestEncoderImpl(session)
+
+                        session
+                          .createDataset(toInsert.toSeq)(enc.encoderPersistentRepr)
                           .repartition(1)
                           .write
                           .defaults

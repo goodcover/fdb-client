@@ -21,15 +21,19 @@ class FdbBatchWrite(schema: StructType, conf: FdbTable.MetadataWith[ReadConf]) e
     new FdbBatchWriterFactory(schema, conf.config, conf.dbConfig, info.numPartitions())
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {
-    val commit = messages.foldLeft(CommitMessage(0L, 0L, 0L)) {
+    val commit       = messages.foldLeft(CommitMessage(0L, 0L, 0L)) {
       case (acc, cm: CommitMessage) =>
         acc + cm
       case (acc, _)                 => acc
     }
+    val messageCount = if (messages.length == 0) 1 else messages.length
+    val avgBytes     = Helpers.humanReadableSize(commit.bytes / messageCount, false)
+    val avgRecords   = commit.records / messageCount
+
     logInfo(
       s"FdbBatchWrite - [$commit], " +
-        s"avg per partition = [${Helpers.humanReadableSize(commit.bytes / messages.length, false)}], " +
-        s"avg records = [${commit.records / messages.length}]"
+        s"avg per partition = [$avgBytes], " +
+        s"avg records = [$avgRecords]"
     )
   }
 
