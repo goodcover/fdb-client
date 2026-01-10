@@ -93,7 +93,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   // Publishing configuration
-  def publishVersion = "0.5.0-M1-SNAPSHOT"
+  def publishVersion = "0.5.0-M2-SNAPSHOT"
 
   def pomSettings = PomSettings(
     description = "FDB Client Library",
@@ -264,29 +264,34 @@ object Dependencies {
       .exclude("com.google.protobuf"  -> "protobuf-java")
   )
 
+  def sparkAll = Seq(
+    mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
+  )
+
   def spark(scalaVersion: String, sparkVersion: String) =
     mkConfig(mvn"org.apache.spark::spark-core:$sparkVersion".withDottyCompat(scalaVersion)) ++
       mkConfig(mvn"org.apache.spark::spark-catalyst:$sparkVersion".withDottyCompat(scalaVersion)) ++
       mkConfig(mvn"org.apache.spark::spark-sql:$sparkVersion".withDottyCompat(scalaVersion)) ++
-      mkConfig(mvn"org.apache.spark::spark-protobuf:$sparkVersion".withDottyCompat(scalaVersion)) ++ Seq(
-        mvn"org.scalatest::scalatest:${Versions.scalatest}",
-        mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
-        mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
-      )
+      mkConfig(mvn"org.apache.spark::spark-protobuf:$sparkVersion".withDottyCompat(scalaVersion))
 
   def sparkTest(scalaVersion: String, sparkVersion: String) =
-    if (scalaVersion == Versions.scala3)
-      Seq(
-        mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}"
-          .withConfiguration("test")
-          .exclude("com.google.protobuf" -> "protobuf-java")
-      )
-    else
-      Seq(
-        mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}"
-          .withDottyCompat(scalaVersion)
-          .withConfiguration("test"),
-      )
+    Seq(
+      mvn"org.scalatest::scalatest:${Versions.scalatest}",
+    ) ++ (
+      if (scalaVersion == Versions.scala3)
+        Seq(
+          mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}"
+            .withConfiguration("test")
+            .exclude("com.google.protobuf" -> "protobuf-java")
+        )
+      else
+        Seq(
+          mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}"
+            .withDottyCompat(scalaVersion)
+            .withConfiguration("test"),
+        )
+    )
 }
 
 // Repository configuration
@@ -432,7 +437,8 @@ trait FdbSparkModule extends CommonModule {
   def sparkVersion: String
   def moduleDeps     = Seq(`fdb-core`(), `fdb-record-es`())
   def testModuleDeps = Seq(`fdb-core-tests`, `fdb-record-es-tests`)
-  def mvnDeps        = Dependencies.spark(scalaVersion(), sparkVersion)
+  def mvnDeps        = Dependencies.sparkAll
+  def compileMvnDeps = Dependencies.spark(scalaVersion(), sparkVersion)
   def forkArgs       = Seq("-Xmx2g")
 }
 
