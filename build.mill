@@ -29,7 +29,7 @@ object Versions {
   val kindProjector      = "0.13.3"
   val jsoniterScala      = "2.37.5"
   val pprint             = "0.9.0"
-  val protobuf           = "3.25.1"
+  val protobuf           = "3.25.8"
   val rezilience         = "0.10.4"
   // Keep the pull_request.yml up to date
   val scala213           = "2.13.16"
