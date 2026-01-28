@@ -34,7 +34,7 @@ object Versions {
   // Keep the pull_request.yml up to date
   val scala213           = "2.13.16"
   // Keep the pull_request.yml up to date
-  val scala3             = "3.3.6"
+  val scala3             = "3.3.7"
   val scalapbSpark       = "1.0.5"
   val scoverage          = "2.3.0"
   val sourcecode         = "0.4.2"
