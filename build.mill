@@ -32,7 +32,7 @@ object Versions {
   val protobuf           = "3.25.1"
   val rezilience         = "0.10.4"
   // Keep the pull_request.yml up to date
-  val scala213           = "2.13.16"
+  val scala213           = "2.13.18"
   // Keep the pull_request.yml up to date
   val scala3             = "3.3.6"
   val scalapbSpark       = "1.0.5"
