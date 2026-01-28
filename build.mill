@@ -23,7 +23,7 @@ object Versions {
   val betterMonadicFor   = "0.3.1"
   val fdbRecord          = "4.2.8.0"
   val foundationDb       = "7.3.43"
-  val logback            = "1.5.18"
+  val logback            = "1.5.26"
   val lucene             = "8.11.1"
   val pekko              = "1.0.3"
   val kindProjector      = "0.13.3"
