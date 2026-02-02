@@ -38,10 +38,10 @@ object Versions {
   val scalapbSpark       = "1.0.5"
   val scoverage          = "2.5.2"
   val sourcecode         = "0.4.2"
-  val spark              = "3.5.5"
+  val spark              = "3.5.8"
   val spark4             = "4.0.1"
-  val spark3Encoders     = "0.3.2"
-  val scalatest          = "3.2.19"
+  val sparkEncoders      = "0.2.0.2"
+  val scalatest          = "3.2.16"
   val zio                = "2.1.19"
   val zioReactiveStreams = "2.0.2"
   val scalapb            = "0.11.15"
@@ -50,6 +50,11 @@ object Versions {
   val SparkJavaVersion = "17"
 
   val scalaVersions = Seq(scala213, scala3)
+
+  val sparkMatrix = for {
+    crossVersion <- scalaVersions
+    sparkVersion <- Seq(Versions.spark, Versions.spark4)
+  } yield (crossVersion, sparkVersion)
 }
 
 // Common settings trait
@@ -133,7 +138,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
     override def scalacOptions: T[Seq[String]] =
       Task {
         val excludeFilePrefix = if (isScala3()) "-coverage-exclude-files" else "-P:scoverage:excludedFiles"
-        val excludePkgsPrefix = if (isScala3()) "-coverage-exclude-pkg" else "-P:scoverage:excludedPackages"
+        val excludePkgsPrefix = if (isScala3()) "-coverage-exclude-classlikes" else "-P:scoverage:excludedPackages"
 
         val excludePkgs  =
           if (scoverageExcludedPackages.isEmpty) Seq.empty
@@ -149,6 +154,8 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   trait BaseTest extends SbtTests with ScoverageTests {
+
+    protected def isScala3: Task[Boolean] = Task.Anon(JvmWorkerUtil.isScala3(outer.scalaVersion()))
 
     /**
      * Alter classpath from upstream modules by replacing in-place outer module
@@ -275,23 +282,13 @@ object Dependencies {
       mkConfig(mvn"org.apache.spark::spark-sql:$sparkVersion".withDottyCompat(scalaVersion)) ++
       mkConfig(mvn"org.apache.spark::spark-protobuf:$sparkVersion".withDottyCompat(scalaVersion))
 
-  def sparkTest(scalaVersion: String, sparkVersion: String) =
+  def sparkTest(scalaVersion: String, sparkVersion: String) = {
+    val note = if (sparkVersion == Versions.spark4) "4" else "3"
     Seq(
+      mvn"com.goodcover.spark::spark$note-encoders:${Versions.sparkEncoders}",
       mvn"org.scalatest::scalatest:${Versions.scalatest}",
-    ) ++ (
-      if (scalaVersion == Versions.scala3)
-        Seq(
-          mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}"
-            .withConfiguration("test")
-            .exclude("com.google.protobuf" -> "protobuf-java")
-        )
-      else
-        Seq(
-          mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}"
-            .withDottyCompat(scalaVersion)
-            .withConfiguration("test"),
-        )
     )
+  }
 }
 
 // Repository configuration
@@ -429,40 +426,52 @@ trait FdbRecordEsPekkoItModule extends CommonTests {
 }
 
 // Spark module
-object `fdb-spark` extends Cross[FdbSparkModule35](Versions.scalaVersions)
+object `fdb-spark` extends Cross[FdbSparkModule](Versions.sparkMatrix)
 
-object `fdb-spark4` extends Cross[FdbSparkModule4](Versions.scalaVersions)
+trait FdbSparkModule extends CommonModule with Cross.Module2[String, String] { outer =>
+  def sparkVersion: String = crossValue2
+  def moduleDeps           = Seq(`fdb-core`(), `fdb-record-es`())
+  def testModuleDeps       = Seq(`fdb-core-tests`(), `fdb-record-es-tests`())
+  def mvnDeps              = Dependencies.sparkAll
+  def compileMvnDeps       = Dependencies.spark(scalaVersion(), sparkVersion)
+  def forkArgs             = Seq("-Xmx2g")
 
-trait FdbSparkModule extends CommonModule {
-  def sparkVersion: String
-  def moduleDeps     = Seq(`fdb-core`(), `fdb-record-es`())
-  def testModuleDeps = Seq(`fdb-core-tests`, `fdb-record-es-tests`)
-  def mvnDeps        = Dependencies.sparkAll
-  def compileMvnDeps = Dependencies.spark(scalaVersion(), sparkVersion)
-  def forkArgs       = Seq("-Xmx2g")
-}
+  def artifactName = s"fdb-spark_$sparkVersion"
 
-trait FdbSparkModule35 extends FdbSparkModule {
-  override def sparkVersion = Versions.spark
-}
-
-trait FdbSparkModule4 extends FdbSparkModule {
-  override def JavaVersion: String = Versions.SparkJavaVersion
-
-  override def sparkVersion = Versions.spark4
-}
-
-// Spark tests module
-object `fdb-spark-tests` extends Cross[FdbSparkTestsModule35](Versions.scalaVersions)
-
-object `fdb-spark4-tests` extends Cross[FdbSparkTestsModule4](Versions.scalaVersions)
-
-trait FdbSparkTestsModule extends CommonTests {
-  def sparkVersion: String
-
-  def mvnDeps = Dependencies.spark(scalaVersion(), sparkVersion) ++ Dependencies.sparkTest(scalaVersion(), sparkVersion)
-
+  // Spark tests module
   object test extends ZTests with CrossSbtTests {
+
+    override def moduleDeps = super.moduleDeps ++ outer.testModuleDeps
+
+    def mvnDeps =
+      outer.mvnDeps() ++
+        Dependencies.test ++
+        Dependencies.sparkTest(scalaVersion(), outer.sparkVersion) ++
+        Dependencies.spark(scalaVersion(), sparkVersion)
+
+    def forkArgs = Task {
+      val crossToken = crossValue + "-" + crossValue2
+      val env        = Task.env
+      val javaOpts   = env.get("JAVA_OPTS").toList.flatMap(_.split('\n')).map(_.trim).filter(_.nonEmpty)
+      Seq("-Xmx2g") ++ javaOpts ++ Seq(s"-Dcross-token=$crossToken")
+    }
+  }
+
+  // Spark streaming tests module, using junit
+  object testStream extends OrgScalaTest with CrossSbtTests {
+
+    def versionSourcesPaths = scalaVersionDirectoryNames.map(s => os.sub / "src/testStream" / s"scala-$s")
+
+    override def moduleDeps = super.moduleDeps ++ Seq(test)
+
+    def scalacOptions = super.scalacOptions() ++ (
+      if (isScala3()) Seq("-Xignore-scala2-macros") else Seq.empty
+    )
+
+    def mvnDeps =
+      outer.mvnDeps() ++
+        Dependencies.sparkTest(scalaVersion(), outer.sparkVersion) ++
+        Dependencies.spark(scalaVersion(), sparkVersion)
 
     def forkArgs = Task {
       val env      = Task.env
@@ -470,32 +479,6 @@ trait FdbSparkTestsModule extends CommonTests {
       Seq("-Xmx2g") ++ javaOpts
     }
   }
-}
-
-trait FdbSparkTestsModule35 extends FdbSparkTestsModule {
-  override def sparkVersion = Versions.spark
-
-  def moduleDeps = Seq( //
-    `fdb-core`(),
-    `fdb-record-es`(),
-    `fdb-spark`(),
-    `fdb-core-tests`(),
-    `fdb-record-es-tests`(),
-  )
-}
-
-trait FdbSparkTestsModule4 extends FdbSparkTestsModule {
-  override def JavaVersion: String = Versions.SparkJavaVersion
-
-  override def sparkVersion = Versions.spark4
-
-  def moduleDeps = Seq( //
-    `fdb-core`(),
-    `fdb-record-es`(),
-    `fdb-spark4`(),
-    `fdb-core-tests`(),
-    `fdb-record-es-tests`(),
-  )
 }
 
 object scoverage extends ScoverageReport {
