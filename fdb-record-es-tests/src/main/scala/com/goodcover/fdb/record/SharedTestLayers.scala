@@ -14,11 +14,12 @@ object SharedTestLayers {
 
   def ConfigLayer(implicit fn: sourcecode.FullName): ZLayer[TestId, Nothing, EventsourceConfig] = ZLayer.scoped {
     for {
-      testKeySpace <- ZIO.service[TestId]
-      id            = testKeySpace.id
-      pathPerTest   = s"${fn.value}:$id:${BuildInfo.scalaVersion}"
-      directory     = new KeySpaceDirectory(s"tests", KeySpaceDirectory.KeyType.STRING, pathPerTest)
-      _            <- ZIO.logInfo(s"provisioning the following path '$pathPerTest' in keyspaceDirectory '$directory''")
+      testKeySpace   <- ZIO.service[TestId]
+      id              = testKeySpace.id
+      extraCrossToken = sys.props.get("cross-token").getOrElse("no-xtoken")
+      pathPerTest     = s"${fn.value}:$id:${BuildInfo.scalaVersion}:$extraCrossToken"
+      directory       = new KeySpaceDirectory(s"tests", KeySpaceDirectory.KeyType.STRING, pathPerTest)
+      _              <- ZIO.logInfo(s"provisioning the following path '$pathPerTest' in keyspaceDirectory '$directory''")
     } yield EventsourceConfig.makeDefaultConfig(directory)
   }
 
