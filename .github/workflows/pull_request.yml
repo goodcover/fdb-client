@@ -16,7 +16,9 @@ jobs:
       pull-requests: write
     strategy:
       matrix:
-        scala-version: ["2.13.16", "3.3.6"]
+        # Update scala-version in build.mill as well
+        scala-version: ["2.13.18", "3.3.6"]
+        spark-version: ["3.5.8", "4.0.1"]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -37,6 +39,8 @@ jobs:
         run: nix develop . --command printenv
       - name: Run tests for Scala ${{ matrix.scala-version }}
         run: nix develop . --command ./mill __[${{ matrix.scala-version }}].test
+      - name: Run tests for Spark ${{ matrix.spark-version }} Scala ${{ matrix.scala-version }}
+        run: nix develop . --command ./mill __[${{ matrix.scala-version }},${{ matrix.spark-version }}].test
       - name: Gather coverage report for Scala ${{ matrix.scala-version }}
         run: nix develop . --command ./mill scoverage.xmlReportAll
       - name: Upload coverage report for Scala ${{ matrix.scala-version }}
