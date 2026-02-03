@@ -23,42 +23,51 @@ object Versions {
   val betterMonadicFor   = "0.3.1"
   val fdbRecord          = "4.2.8.0"
   val foundationDb       = "7.3.43"
-  val logback            = "1.5.18"
   val lucene             = "8.11.4"
+  val logback            = "1.5.27"
   val pekko              = "1.0.3"
-  val kindProjector      = "0.13.3"
+  val kindProjector      = "0.13.4"
   val jsoniterScala      = "2.37.5"
   val pprint             = "0.9.0"
-  val protobuf           = "3.25.1"
+  val protobuf           = "3.25.8"
   val rezilience         = "0.10.4"
   // Keep the pull_request.yml up to date
-  val scala213           = "2.13.16"
+  val scala213           = "2.13.18"
   // Keep the pull_request.yml up to date
   val scala3             = "3.3.6"
   val scalapbSpark       = "1.0.5"
-  val scoverage          = "2.3.0"
+  val scoverage          = "2.5.2"
   val sourcecode         = "0.4.2"
-  val spark              = "3.5.5"
-  val spark3Encoders     = "0.3.2"
-  val scalatest          = "3.2.19"
+  val spark              = "3.5.8"
+  val spark4             = "4.0.1"
+  val sparkEncoders      = "0.2.0.2"
+  val scalatest          = "3.2.16"
   val zio                = "2.1.19"
   val zioReactiveStreams = "2.0.2"
   val scalapb            = "0.11.15"
 
-  val JavaVersion = "11"
+  val JavaVersion      = "11"
+  val SparkJavaVersion = "17"
 
   val scalaVersions = Seq(scala213, scala3)
+
+  val sparkMatrix = for {
+    crossVersion <- scalaVersions
+    sparkVersion <- Seq(Versions.spark, Versions.spark4)
+  } yield (crossVersion, sparkVersion)
 }
 
 // Common settings trait
 trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule with CrossSbtModule with PublishModule { outer =>
+
+  def JavaVersion: String = Versions.JavaVersion
 
   def scalacOptions = Task {
     if (outer.scalaVersion() == Versions.scala213) {
       Seq(
         "-Ymacro-annotations",
         "-release",
-        Versions.JavaVersion,
+        JavaVersion,
         "-Ypatmat-exhaust-depth",
         "40",
         "-Xsource:3",
@@ -68,7 +77,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
     } else {
       Seq(
         "-release",
-        Versions.JavaVersion,
+        JavaVersion,
         "-source:future",
         "-Wconf:src=src_managed/.*:silent",
         "-Wconf:src=org/apache/spark/sql/proto/.*:silent"
@@ -89,7 +98,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   // Publishing configuration
-  def publishVersion = "0.4.0"
+  def publishVersion = "0.5.0-RC3"
 
   def pomSettings = PomSettings(
     description = "FDB Client Library",
@@ -129,7 +138,7 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
     override def scalacOptions: T[Seq[String]] =
       Task {
         val excludeFilePrefix = if (isScala3()) "-coverage-exclude-files" else "-P:scoverage:excludedFiles"
-        val excludePkgsPrefix = if (isScala3()) "-coverage-exclude-pkg" else "-P:scoverage:excludedPackages"
+        val excludePkgsPrefix = if (isScala3()) "-coverage-exclude-classlikes" else "-P:scoverage:excludedPackages"
 
         val excludePkgs  =
           if (scoverageExcludedPackages.isEmpty) Seq.empty
@@ -145,6 +154,8 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   trait BaseTest extends SbtTests with ScoverageTests {
+
+    protected def isScala3: Task[Boolean] = Task.Anon(JvmWorkerUtil.isScala3(outer.scalaVersion()))
 
     /**
      * Alter classpath from upstream modules by replacing in-place outer module
@@ -250,31 +261,34 @@ object Dependencies {
   )
 
   def mkConfig(dep: Dep): Seq[Dep] = Seq(
-    dep,
-    dep.copy(dep =
-      dep.dep
-        .withVariantSelector(ConfigurationBased(Configuration.join(Configuration.provided, Configuration.test)))
-        .withAttributes(Attributes.empty.withClassifier(Classifier("tests")))
-    )
+    dep.exclude("com.google.protobuf" -> "protobuf-java"),
+    dep
+      .copy(dep =
+        dep.dep
+          .withVariantSelector(ConfigurationBased(Configuration.join(Configuration.provided, Configuration.test)))
+          .withAttributes(Attributes.empty.withClassifier(Classifier("tests")))
+      )
+      .exclude("com.google.protobuf"  -> "protobuf-java")
   )
 
-  def spark(scalaVersion: String) = mkConfig(mvn"org.apache.spark::spark-core:${Versions.spark}".withDottyCompat(scalaVersion)) ++
-    mkConfig(mvn"org.apache.spark::spark-catalyst:${Versions.spark}".withDottyCompat(scalaVersion)) ++
-    mkConfig(mvn"org.apache.spark::spark-sql:${Versions.spark}".withDottyCompat(scalaVersion)) ++
-    mkConfig(mvn"org.apache.spark::spark-protobuf:${Versions.spark}".withDottyCompat(scalaVersion)) ++ Seq(
+  def sparkAll = Seq(
+    mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
+    mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
+  )
+
+  def spark(scalaVersion: String, sparkVersion: String) =
+    mkConfig(mvn"org.apache.spark::spark-core:$sparkVersion".withDottyCompat(scalaVersion)) ++
+      mkConfig(mvn"org.apache.spark::spark-catalyst:$sparkVersion".withDottyCompat(scalaVersion)) ++
+      mkConfig(mvn"org.apache.spark::spark-sql:$sparkVersion".withDottyCompat(scalaVersion)) ++
+      mkConfig(mvn"org.apache.spark::spark-protobuf:$sparkVersion".withDottyCompat(scalaVersion))
+
+  def sparkTest(scalaVersion: String, sparkVersion: String) = {
+    val note = if (sparkVersion == Versions.spark4) "4" else "3"
+    Seq(
+      mvn"com.goodcover.spark::spark$note-encoders:${Versions.sparkEncoders}",
       mvn"org.scalatest::scalatest:${Versions.scalatest}",
-      mvn"ch.qos.logback:logback-classic:${Versions.logback}".withConfiguration("provided"),
-      mvn"com.lihaoyi::pprint:${Versions.pprint}",
-      mvn"com.thesamet.scalapb::sparksql35-scalapb0_11:${Versions.scalapbSpark}".withDottyCompat(scalaVersion),
-      mvn"com.google.protobuf:protobuf-java-util:${Versions.protobuf}",
-      mvn"com.github.plokhotnyuk.jsoniter-scala::jsoniter-scala-macros:${Versions.jsoniterScala}",
-    ) ++ (
-      if (scalaVersion == Versions.scala3)
-        Seq(
-          mvn"io.github.vincenzobaz::spark-scala3-encoders:${Versions.spark3Encoders}".withConfiguration("test")
-        )
-      else Seq.empty
     )
+  }
 }
 
 // Repository configuration
@@ -412,33 +426,56 @@ trait FdbRecordEsPekkoItModule extends CommonTests {
 }
 
 // Spark module
-object `fdb-spark` extends Cross[FdbSparkModule](Versions.scalaVersions)
+object `fdb-spark` extends Cross[FdbSparkModule](Versions.sparkMatrix)
 
-trait FdbSparkModule extends CommonModule {
-  def moduleDeps     = Seq(`fdb-core`(), `fdb-record-es`())
-  def testModuleDeps = Seq(`fdb-core-tests`, `fdb-record-es-tests`)
-  def mvnDeps        = Dependencies.spark(scalaVersion())
-  def forkArgs       = Seq("-Xmx2g")
-}
+trait FdbSparkModule extends CommonModule with Cross.Module2[String, String] { outer =>
+  def sparkVersion: String = crossValue2
+  def moduleDeps           = Seq(`fdb-core`(), `fdb-record-es`())
+  def testModuleDeps       = Seq(`fdb-core-tests`(), `fdb-record-es-tests`())
+  def mvnDeps              = Dependencies.sparkAll
+  def compileMvnDeps       = Dependencies.spark(scalaVersion(), sparkVersion)
+  def forkArgs             = Seq("-Xmx2g")
 
-// Spark tests module
-object `fdb-spark-tests` extends Cross[FdbSparkTestsModule](Versions.scalaVersions)
+  def artifactName = s"fdb-spark_$sparkVersion"
 
-trait FdbSparkTestsModule extends CommonTests {
-  def moduleDeps = Seq( //
-    `fdb-core`(),
-    `fdb-record-es`(),
-    `fdb-spark`(),
-    `fdb-core-tests`(),
-    `fdb-record-es-tests`(),
-  )
-  def mvnDeps    = Dependencies.spark(scalaVersion())
-
+  // Spark tests module
   object test extends ZTests with CrossSbtTests {
+
+    override def moduleDeps = super.moduleDeps ++ outer.testModuleDeps
+
+    def mvnDeps =
+      outer.mvnDeps() ++
+        Dependencies.test ++
+        Dependencies.sparkTest(scalaVersion(), outer.sparkVersion) ++
+        Dependencies.spark(scalaVersion(), sparkVersion)
+
+    def forkArgs = Task {
+      val crossToken = crossValue + "-" + crossValue2
+      val env        = Task.env
+      val javaOpts   = env.get("JAVA_OPTS").toList.flatMap(_.split('\n')).map(_.trim).filter(_.nonEmpty)
+      Seq("-Xmx2g") ++ javaOpts ++ Seq(s"-Dcross-token=$crossToken")
+    }
+  }
+
+  // Spark streaming tests module, using junit
+  object testStream extends OrgScalaTest with CrossSbtTests {
+
+    def versionSourcesPaths = scalaVersionDirectoryNames.map(s => os.sub / "src/testStream" / s"scala-$s")
+
+    override def moduleDeps = super.moduleDeps ++ Seq(test)
+
+    def scalacOptions = super.scalacOptions() ++ (
+      if (isScala3()) Seq("-Xignore-scala2-macros") else Seq.empty
+    )
+
+    def mvnDeps =
+      outer.mvnDeps() ++
+        Dependencies.sparkTest(scalaVersion(), outer.sparkVersion) ++
+        Dependencies.spark(scalaVersion(), sparkVersion)
 
     def forkArgs = Task {
       val env      = Task.env
-      val javaOpts = env.get("JAVA_OPTS").toList.flatMap(_.split('\n'))
+      val javaOpts = env.get("JAVA_OPTS").toList.flatMap(_.split('\n')).map(_.trim).filter(_.nonEmpty)
       Seq("-Xmx2g") ++ javaOpts
     }
   }
