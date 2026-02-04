@@ -4,7 +4,7 @@ let
   # INSPIRATION
   # https://github.com/fdb-rs/fdb/blob/main/nix/ci/fdb-7.1/default.nix
 
-  version = "7.3.43";
+  version = "7.3.71";
   isDir = false;
 
   fdb-client-lib-dir = pkgs.callPackage ./client-lib.nix {
