@@ -14,7 +14,7 @@ let
 
   fdb-cli = pkgs.callPackage ./app.nix {
     name = "cli";
-    sha256 = "sha256-ldutrIeoXeK3LmmEUEJgVDhdM2v68Ry4Lhk2FcKrmAY=";
+    sha256 = "sha256-RN8apJ9Y4iCe5fwe8ay/0ke85RqAdez2OloNEVScJOQ=";
     inherit version;
   };
 
