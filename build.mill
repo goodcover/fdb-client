@@ -22,7 +22,7 @@ import mill.util.VcsVersionModule
 object Versions {
   val autoService        = "1.1.1"
   val betterMonadicFor   = "0.3.1"
-  val fdbRecord          = "4.2.8.0"
+  val fdbRecord          = "4.9.6.0"
   val foundationDb       = "7.3.71"
   val lucene             = "8.11.4"
   val logback            = "1.5.27"
@@ -35,7 +35,7 @@ object Versions {
   // Keep the pull_request.yml up to date
   val scala213           = "2.13.18"
   // Keep the pull_request.yml up to date
-  val scala3             = "3.3.6"
+  val scala3             = "3.3.7"
   val scalapbSpark       = "1.0.5"
   val scoverage          = "2.5.2"
   val sourcecode         = "0.4.2"
