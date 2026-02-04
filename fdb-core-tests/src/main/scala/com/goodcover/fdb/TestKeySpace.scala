@@ -7,8 +7,7 @@ import zio.{ ZIO, ZLayer }
 import scala.annotation.nowarn
 
 private[fdb] case class TestKeySpace(d: SuiteSubspace) {
-  def mkIntKey(i: Int): Array[Byte] =
-    d.ds.pack(Tuple.from(i))
+  val mkIntKey: Int => Array[Byte] = i => d.ds.pack(Tuple.from(i))
 
   def parentTuple: Array[Byte] =
     d.ds.pack()
