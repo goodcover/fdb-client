@@ -1,4 +1,4 @@
-//| mill-version: 1.0.4
+//| mill-version: 1.1.1
 //| mvnDeps:
 //| - com.lihaoyi::mill-contrib-scoverage:$MILL_VERSION
 //| - com.lihaoyi::mill-contrib-scalapblib:$MILL_VERSION
@@ -16,6 +16,7 @@ import mill.javalib.publish.Developer
 import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.scalalib.scalafmt.*
+import mill.util.VcsVersionModule
 
 // Version definitions
 object Versions {
@@ -58,7 +59,13 @@ object Versions {
 }
 
 // Common settings trait
-trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule with CrossSbtModule with PublishModule { outer =>
+trait CommonModule
+    extends SbtModule
+    with ScalafmtModule
+    with ScoverageModule
+    with CrossSbtModule
+    with PublishModule
+    with VcsVersionModule { outer =>
 
   def JavaVersion: String = Versions.JavaVersion
 
@@ -98,7 +105,6 @@ trait CommonModule extends SbtModule with ScalafmtModule with ScoverageModule wi
   }
 
   // Publishing configuration
-  def publishVersion = "0.5.0-RC3"
 
   def pomSettings = PomSettings(
     description = "FDB Client Library",
