@@ -8,7 +8,7 @@ let
   isDir = false;
 
   fdb-client-lib-dir = pkgs.callPackage ./client-lib.nix {
-    sha256 = "sha256-gZsbGnHC78vVtNgcOkRQ5VM9y6BFyUznH2cE6FRyut8=";
+    sha256 = "sha256-voHnlduI5atMUb/7uh3Ayp9Re7G5rKx9e81TlTbtU3o=";
     inherit version isDir;
   };
 
