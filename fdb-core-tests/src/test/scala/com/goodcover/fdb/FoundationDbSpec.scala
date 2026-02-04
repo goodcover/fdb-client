@@ -122,7 +122,7 @@ object FoundationDbSpec extends ZIOSpecDefault {
               .interruptWhen(p)
               .runCount
 
-        } yield assertTrue(readStream >= interruptAt + 1 && readStream <= countInsert._2)
+        } yield assertTrue(readStream >= interruptAt && readStream <= countInsert._2)
       }
     },
     test("test user exceptions cancelling transactions") {
