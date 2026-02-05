@@ -619,7 +619,7 @@ object releaseProcess extends Module {
 
       // Step 4: Call gh pr release version --generate-notes
       log.info("Creating GitHub release")
-      os.proc("gh", "pr", "release", newVersion, "--generate-notes")
+      os.proc("gh", "release", "create", newVersion, "--generate-notes")
         .call(cwd = workspace, stdout = os.Inherit)
 
       log.info("")

@@ -27,3 +27,7 @@ jobs:
         run: nix develop . --command printenv
       - name: Publish to Sonatype Central
         run: nix develop . --command ./mill mill.javalib.SonatypeCentralPublishModule/
+        env:
+          MILL_PGP_SECRET_BASE64: ${{ secrets.MILL_PGP_SECRET_BASE64 }}
+          MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
+          MILL_SONATYPE_PASSWORD: ${{ secrets.MILL_SONATYPE_PASSWORD }}
