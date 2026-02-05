@@ -209,12 +209,11 @@ Look in the tests for examples, like this https://github.com/goodcover/fdb-clien
 
 ## Publishing
 
-tag a release as follows
-`git tag vX.Y.Z`
+Run a little utility to increment and tag versions
 
-and then run `publish-central .`, hit enter when if the version looks good.
-
-We will move to github based publishing soon.
+```bash
+./mill -i --ticker=false "releaseProcess.release"
+```
 
 ## Resources
 - Nix examples, https://github.com/fdb-rs/fdb/blob/main/nix/ci/fdb-7.1/default.nix
