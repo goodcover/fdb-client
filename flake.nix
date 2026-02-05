@@ -36,13 +36,11 @@
 
       in
       {
-        devShell = pkgs.mkShell {
+        devShell = pkgs.mkShell ({
           buildInputs = [
             graalpkgs.graalvm-ce
             pkgs.mill
           ] ++ fdbPkgs;
-
-          FDB_LIBRARY_PATH_FDB_C = FDB_LIBRARY_PATH_FDB_C;
 
           JAVA_OPTS = ''${lib.optionalString (FDB_LIBRARY_PATH_FDB_C != "") "-DFDB_LIBRARY_PATH_FDB_C=${FDB_LIBRARY_PATH_FDB_C}"}
 --add-opens=java.base/java.lang=ALL-UNNAMED
@@ -65,7 +63,9 @@
             export REPO_ROOT=$PWD
             [[ -f "$SECURE_SOURCE/mill/source-me.sh" ]] && source "$SECURE_SOURCE/mill/source-me.sh"
           '';
-        };
+        } // lib.optionalAttrs isLinux {
+          FDB_LIBRARY_PATH_FDB_C = FDB_LIBRARY_PATH_FDB_C;
+        });
       }
     );
 }
