@@ -1,0 +1,29 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Setup caching and environment
+        uses: coursier/cache-action@v6
+        id: coursier-cache
+      - name: Setup Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Check Nix flake
+        uses: DeterminateSystems/flake-checker-action@main
+      - name: Prepare Nix environment
+        run: nix develop . --command printenv
+      - name: Publish to Sonatype Central
+        run: nix develop . --command ./mill mill.javalib.SonatypeCentralPublishModule/
