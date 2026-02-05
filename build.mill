@@ -38,7 +38,7 @@ object Versions {
   val scala3             = "3.3.7"
   val scalapbSpark       = "1.0.5"
   val scoverage          = "2.5.2"
-  val sourcecode         = "0.4.2"
+  val sourcecode         = "0.4.4"
   val spark              = "3.5.8"
   val spark4             = "4.0.1"
   val sparkEncoders      = "0.2.0.2"
