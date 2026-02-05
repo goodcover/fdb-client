@@ -590,7 +590,7 @@ object releaseProcess extends Module {
     val confirm =
       prompt(s"Are you sure you want to release version $BOLD$newVersion$RESET on branch $BOLD$currentBranch$RESET? (y/N): ")
 
-    if (confirm != "y" && confirm != "yes") {
+    if (!Seq("y", "yes").contains(confirm.trim.toLowerCase)) {
       log.info("Release cancelled.")
       Task.fail("Release cancelled")
     }
