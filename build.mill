@@ -547,10 +547,10 @@ object releaseProcess extends Module {
     log.info("")
 
     // Check for uncommitted changes
-//    if (vcsState.dirtyHash.isDefined) {
-//      log.error("ERROR: You have uncommitted changes. Please commit or stash them before releasing.")
-//      throw new Exception("Uncommitted changes detected")
-//    }
+    if (vcsState.dirtyHash.isDefined) {
+      log.error("ERROR: You have uncommitted changes. Please commit or stash them before releasing.")
+      throw new Exception("Uncommitted changes detected")
+    }
 
     // Interactive prompt for version
     val input      = prompt(s"Enter new version (press Enter for $BOLD$proposedVersion$RESET): ")
