@@ -495,11 +495,15 @@ object scoverage extends ScoverageReport {
 // Version management module
 object releaseProcess extends Module {
 
+  /** Nice formatted bar */
+  def logBar()(implicit ctx: mill.api.TaskCtx.Log) =
+    Task.log.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
   def showState() = Task.Command {
     val log      = Task.log
     val vcsState = VcsVersion.calcVcsState(log)
 
-    log.info("=== VCS Version Information ===")
+    log.info("━━━ VCS Version Information ━━━")
     log.info(s" Format Version: ${vcsState.format()}")
     log.info(s" Last Tag: ${vcsState.lastTag.getOrElse("none")}")
     log.info(s" Commits Since Last Tag: ${vcsState.commitsSinceLastTag}")
@@ -537,7 +541,7 @@ object releaseProcess extends Module {
     val currentVersion  = vcsState.lastTag.getOrElse("0.0.0")
     val proposedVersion = "v" + incrementPatchVersion(currentVersion)
 
-    log.info("")
+    logBar()
     log.info(s"  Current version: $BOLD$currentVersion$RESET")
     log.info(s" Proposed version: $BOLD$proposedVersion$RESET")
     log.info("")
@@ -551,10 +555,10 @@ object releaseProcess extends Module {
     // Interactive prompt for version
     val input      = prompt(s"Enter new version (press Enter for $BOLD$proposedVersion$RESET): ")
     val newVersion = if (input == null) {
-      log.error("==============================================")
+      logBar()
       log.error("ERROR: Got a null, this is likely due to not running ./mill -i --ticker=false ...")
       log.error("Please retry with ./mill -i --ticker=false ...")
-      log.error("==============================================")
+      logBar()
       Task.fail(s"re-run with ./mill -i --ticker=false ...")
     } else if (input.isEmpty) proposedVersion
     else input
@@ -574,13 +578,15 @@ object releaseProcess extends Module {
       .text()
       .trim
 
-    log.info("")
+    logBar()
     log.info(s" Releasing version: $BOLD$newVersion$RESET")
     log.info(s"    Current branch: $BOLD$currentBranch$RESET")
     log.info("")
 
     // Confirm
-    log.info("")
+    if (currentBranch != "master") {
+      log.error(s"${BOLD}Release from master branch only, only proceed if you know what you're doing ($currentBranch)$RESET")
+    }
     val confirm =
       prompt(s"Are you sure you want to release version $BOLD$newVersion$RESET on branch $BOLD$currentBranch$RESET? (y/N): ")
 
@@ -590,29 +596,37 @@ object releaseProcess extends Module {
     }
 
     try {
+      logBar()
+
       // Step 1: Create and push the tag
       log.info(s"Creating tag: $newVersion")
-//      os.proc("git", "tag", "-a", newVersion, "-m", s"Release $newVersion")
-//        .call(cwd = workspace, stdout = os.Inherit)
+      os.proc("git", "tag", "-a", newVersion, "-m", s"Release $newVersion")
+        .call(cwd = workspace, stdout = os.Inherit)
 
       log.info(s"Pushing tag: $newVersion")
-//      os.proc("git", "push", "origin", newVersion)
-//        .call(cwd = workspace, stdout = os.Inherit)
+      os.proc("git", "push", "origin", newVersion)
+        .call(cwd = workspace, stdout = os.Inherit)
 
       // Step 2: Create empty commit with version increment message
       log.info("Creating version increment commit")
-//      os.proc("git", "commit", "--allow-empty", "-m", s"Increment version to $newVersion")
-//        .call(cwd = workspace, stdout = os.Inherit)
+      os.proc("git", "commit", "--allow-empty", "-m", s"Increment version to $newVersion")
+        .call(cwd = workspace, stdout = os.Inherit)
 
       // Step 3: Push current branch
       log.info(s"Pushing branch: $currentBranch")
-//      os.proc("git", "push", "origin", currentBranch)
-//        .call(cwd = workspace, stdout = os.Inherit)
+      os.proc("git", "push", "origin", currentBranch)
+        .call(cwd = workspace, stdout = os.Inherit)
+
+      // Step 4: Call gh pr release version --generate-notes
+      log.info("Creating GitHub release")
+      os.proc("gh", "pr", "release", newVersion, "--generate-notes")
+        .call(cwd = workspace, stdout = os.Inherit)
 
       log.info("")
       log.info(s"✓ Successfully released version $newVersion")
       log.info(s"✓ Tag $newVersion created and pushed")
       log.info(s"✓ Branch $currentBranch pushed")
+      log.info(s"✓ Github release $newVersion created")
 
     } catch {
       case e: Exception =>
