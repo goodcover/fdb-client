@@ -16,7 +16,7 @@ import mill.javalib.publish.Developer
 import mill.scalalib.*
 import mill.scalalib.publish.*
 import mill.scalalib.scalafmt.*
-import mill.util.VcsVersionModule
+import mill.util.{ VcsVersion, VcsVersionModule }
 
 // Version definitions
 object Versions {
@@ -490,4 +490,194 @@ trait FdbSparkModule extends CommonModule with Cross.Module2[String, String] { o
 object scoverage extends ScoverageReport {
   override def scalaVersion     = Versions.scala213
   override def scoverageVersion = Versions.scoverage
+}
+
+// Version management module
+object releaseProcess extends Module {
+
+  /** Nice formatted bar */
+  def logBar()(implicit ctx: mill.api.TaskCtx.Log) =
+    Task.log.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+  def showState() = Task.Command {
+    val log      = Task.log
+    val vcsState = VcsVersion.calcVcsState(log)
+
+    log.info("━━━ VCS Version Information ━━━")
+    log.info(s" Format Version: ${vcsState.format()}")
+    log.info(s" Last Tag: ${vcsState.lastTag.getOrElse("none")}")
+    log.info(s" Commits Since Last Tag: ${vcsState.commitsSinceLastTag}")
+    log.info(s" Current Commit: ${vcsState.currentRevision}")
+    log.info(s" Dirty Changes: ${vcsState.dirtyHash.getOrElse("none")}")
+  }
+
+  def prompt(label: String): String = {
+    println(label)
+    System.out.flush()
+    scala.io.StdIn.readLine()
+  }
+
+  /**
+   * Interactive version release command that:
+   *   1. Gets current version from VCS
+   *   2. Proposes incrementing the patch version
+   *   3. Allows you to input a custom version
+   *   4. Creates and pushes a git tag
+   *   5. Creates an empty commit with version increment message
+   *   6. Pushes the tag and current branch
+   */
+  def release() = Task.Command {
+    import mill.util.VcsVersion
+    import scala.io.AnsiColor._
+
+    val log       = Task.log
+    val workspace = Task.ctx().workspace
+
+    // Get current VCS state
+    val vcsState = VcsVersion.calcVcsState(log)
+    showState()
+
+    // Parse current version and propose patch increment
+    val currentVersion  = vcsState.lastTag.getOrElse("0.0.0")
+    val proposedVersion = "v" + incrementPatchVersion(currentVersion)
+
+    logBar()
+    log.info(s"  Current version: $BOLD$currentVersion$RESET")
+    log.info(s" Proposed version: $BOLD$proposedVersion$RESET")
+    log.info("")
+
+    // Check for uncommitted changes
+    if (vcsState.dirtyHash.isDefined) {
+      log.error("ERROR: You have uncommitted changes. Please commit or stash them before releasing.")
+      throw new Exception("Uncommitted changes detected")
+    }
+
+    // Interactive prompt for version
+    val input      = prompt(s"Enter new version (press Enter for $BOLD$proposedVersion$RESET): ")
+    val newVersion = if (input == null) {
+      logBar()
+      log.error("ERROR: Got a null, this is likely due to not running ./mill -i --ticker=false ...")
+      log.error("Please retry with ./mill -i --ticker=false ...")
+      logBar()
+      Task.fail(s"re-run with ./mill -i --ticker=false ...")
+    } else if (input.isEmpty) proposedVersion
+    else input
+
+    // Validate version format
+    if (!isValidVersion(newVersion)) {
+      log.error(s"ERROR: Invalid version format: $newVersion")
+      log.error("Version should be in format: vX.Y.Z or vX.Y.Z-suffix")
+      Task.fail("Invalid version format")
+    }
+
+    // Get current branch
+    val currentBranch = os
+      .proc("git", "rev-parse", "--abbrev-ref", "HEAD")
+      .call(cwd = workspace)
+      .out
+      .text()
+      .trim
+
+    logBar()
+    log.info(s" Releasing version: $BOLD$newVersion$RESET")
+    log.info(s"    Current branch: $BOLD$currentBranch$RESET")
+    log.info("")
+
+    // Confirm
+    if (currentBranch != "master") {
+      log.error(s"${BOLD}Release from master branch only, only proceed if you know what you're doing ($currentBranch)$RESET")
+    }
+    val confirm =
+      prompt(s"Are you sure you want to release version $BOLD$newVersion$RESET on branch $BOLD$currentBranch$RESET? (y/N): ")
+
+    if (!Seq("y", "yes").contains(confirm.trim.toLowerCase)) {
+      log.info("Release cancelled.")
+      Task.fail("Release cancelled")
+    }
+
+    try {
+      logBar()
+
+      // Step 1: Create and push the tag
+      log.info(s"Creating tag: $newVersion")
+      os.proc("git", "tag", "-a", newVersion, "-m", s"Release $newVersion")
+        .call(cwd = workspace, stdout = os.Inherit)
+
+      log.info(s"Pushing tag: $newVersion")
+      os.proc("git", "push", "origin", newVersion)
+        .call(cwd = workspace, stdout = os.Inherit)
+
+      // Step 2: Create empty commit with version increment message
+      log.info("Creating version increment commit")
+      os.proc("git", "commit", "--allow-empty", "-m", s"Increment version to $newVersion")
+        .call(cwd = workspace, stdout = os.Inherit)
+
+      // Step 3: Push current branch
+      log.info(s"Pushing branch: $currentBranch")
+      os.proc("git", "push", "origin", currentBranch)
+        .call(cwd = workspace, stdout = os.Inherit)
+
+      // Step 4: Call gh pr release version --generate-notes
+      log.info("Creating GitHub release")
+      os.proc("gh", "pr", "release", newVersion, "--generate-notes")
+        .call(cwd = workspace, stdout = os.Inherit)
+
+      log.info("")
+      log.info(s"✓ Successfully released version $newVersion")
+      log.info(s"✓ Tag $newVersion created and pushed")
+      log.info(s"✓ Branch $currentBranch pushed")
+      log.info(s"✓ Github release $newVersion created")
+
+    } catch {
+      case e: Exception =>
+        log.error(s"ERROR during release: ${e.getMessage}")
+        log.error("You may need to manually clean up git state")
+        throw e
+    }
+  }
+
+  /** Increment the patch version of a semantic version string */
+  private def incrementPatchVersion(version: String): String = {
+    // Remove 'v' prefix if present
+    val cleanVersion = if (version.startsWith("v")) version.substring(1) else version
+
+    // Split on '-' to handle versions like "1.2.3-SNAPSHOT"
+    val parts       = cleanVersion.split("-", 2)
+    val versionPart = parts(0)
+    val suffix      = if (parts.length > 1) Some(parts(1)) else None
+
+    // Split version into major.minor.patch
+    val versionNumbers = versionPart.split("\\.").map(_.toIntOption.getOrElse(0))
+
+    val (major, minor, patch) = versionNumbers.length match {
+      case 0 => (0, 0, 1)
+      case 1 => (versionNumbers(0), 0, 1)
+      case 2 => (versionNumbers(0), versionNumbers(1), 1)
+      case _ => (versionNumbers(0), versionNumbers(1), versionNumbers(2) + 1)
+    }
+
+    val newVersion = s"$major.$minor.$patch"
+    suffix.map(s => s"$newVersion-$s").getOrElse(newVersion)
+  }
+
+  /** Validate version format (basic semantic versioning) */
+  private def isValidVersion(version: String): Boolean = {
+    val semverPattern = """^v\d+\.\d+\.\d+(-[\w\.\-]+)?$""".r
+    semverPattern.matches(version)
+  }
+
+  /** Show current version information */
+  def show() = Task.Command {
+    import mill.util.VcsVersion
+
+    val log      = Task.log
+    val vcsState = VcsVersion.calcVcsState(log)
+    showState()
+
+    val currentVersion  = vcsState.lastTag.getOrElse("0.0.0")
+    val proposedVersion = incrementPatchVersion(currentVersion)
+    log.info("")
+    log.info(s" Current Version: $currentVersion")
+    log.info(s" Next Patch Version: $proposedVersion")
+  }
 }
