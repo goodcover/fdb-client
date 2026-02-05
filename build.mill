@@ -23,7 +23,7 @@ object Versions {
   val autoService        = "1.1.1"
   val betterMonadicFor   = "0.3.1"
   val fdbRecord          = "4.9.6.0"
-  val foundationDb       = "7.3.71"
+  val foundationDb       = "7.3.43"
   val lucene             = "8.11.4"
   val logback            = "1.5.27"
   val pekko              = "1.0.3"
