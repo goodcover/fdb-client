@@ -2,7 +2,7 @@
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
     nixpkgs.url = "github:nixos/nixpkgs";
-    graal.url = "github:nixos/nixpkgs/d9f258945d3532e399d7f73fcd9b6fa5b4393e01";
+    graal.url = "github:nixos/nixpkgs/336eda0d07dc5e2be1f923990ad9fdb6bc8e28e3";
   };
 
   outputs = { self, flake-utils, nixpkgs, graal }:
@@ -36,15 +36,13 @@
 
       in
       {
-        devShell = pkgs.mkShell {
+        devShell = pkgs.mkShell ({
           buildInputs = [
             graalpkgs.graalvm-ce
             pkgs.mill
           ] ++ fdbPkgs;
 
-          FDB_LIBRARY_PATH_FDB_C = FDB_LIBRARY_PATH_FDB_C;
-
-          JAVA_OPTS = ''-DFDB_LIBRARY_PATH_FDB_C=${FDB_LIBRARY_PATH_FDB_C}
+          JAVA_OPTS = ''${lib.optionalString (FDB_LIBRARY_PATH_FDB_C != "") "-DFDB_LIBRARY_PATH_FDB_C=${FDB_LIBRARY_PATH_FDB_C}"}
 --add-opens=java.base/java.lang=ALL-UNNAMED
 --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
 --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
@@ -65,7 +63,9 @@
             export REPO_ROOT=$PWD
             [[ -f "$SECURE_SOURCE/mill/source-me.sh" ]] && source "$SECURE_SOURCE/mill/source-me.sh"
           '';
-        };
+        } // lib.optionalAttrs isLinux {
+          FDB_LIBRARY_PATH_FDB_C = FDB_LIBRARY_PATH_FDB_C;
+        });
       }
     );
 }

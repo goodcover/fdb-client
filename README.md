@@ -207,6 +207,15 @@ Look in the tests for examples, like this https://github.com/goodcover/fdb-clien
 
 ## [Contributing Guide](./CONTRIBUTING.md)
 
+## Publishing
+
+tag a release as follows
+`git tag vX.Y.Z`
+
+and then run `publish-central .`, hit enter when if the version looks good.
+
+We will move to github based publishing soon.
+
 ## Resources
 - Nix examples, https://github.com/fdb-rs/fdb/blob/main/nix/ci/fdb-7.1/default.nix
 
