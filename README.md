@@ -207,6 +207,14 @@ Look in the tests for examples, like this https://github.com/goodcover/fdb-clien
 
 ## [Contributing Guide](./CONTRIBUTING.md)
 
+## Publishing
+
+Run a little utility to increment and tag versions
+
+```bash
+./mill -i --ticker=false "releaseProcess.release"
+```
+
 ## Resources
 - Nix examples, https://github.com/fdb-rs/fdb/blob/main/nix/ci/fdb-7.1/default.nix
 

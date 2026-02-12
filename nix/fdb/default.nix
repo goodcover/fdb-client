@@ -4,17 +4,17 @@ let
   # INSPIRATION
   # https://github.com/fdb-rs/fdb/blob/main/nix/ci/fdb-7.1/default.nix
 
-  version = "7.3.43";
+  version = "7.3.71";
   isDir = false;
 
   fdb-client-lib-dir = pkgs.callPackage ./client-lib.nix {
-    sha256 = "sha256-gZsbGnHC78vVtNgcOkRQ5VM9y6BFyUznH2cE6FRyut8=";
+    sha256 = "sha256-voHnlduI5atMUb/7uh3Ayp9Re7G5rKx9e81TlTbtU3o=";
     inherit version isDir;
   };
 
   fdb-cli = pkgs.callPackage ./app.nix {
     name = "cli";
-    sha256 = "sha256-ldutrIeoXeK3LmmEUEJgVDhdM2v68Ry4Lhk2FcKrmAY=";
+    sha256 = "sha256-RN8apJ9Y4iCe5fwe8ay/0ke85RqAdez2OloNEVScJOQ=";
     inherit version;
   };
 

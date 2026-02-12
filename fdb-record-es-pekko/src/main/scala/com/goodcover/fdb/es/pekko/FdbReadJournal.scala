@@ -16,7 +16,7 @@ import org.apache.pekko.persistence.query.scaladsl.{
 }
 import org.apache.pekko.stream.scaladsl.Source
 import zio.Task
-import zio.streams.gc.ConversionAdapters
+import zio.interop.reactivestreams.Adapters
 
 import java.time.Instant
 
@@ -70,7 +70,7 @@ class FdbReadJournal(override val system: ExtendedActorSystem, sharedConfig: Con
     Source
       .future(
         unsafeRunFuture(
-          ConversionAdapters.streamToPublisher(
+          Adapters.streamToPublisher(
             es.eventsById(persistenceId, fromSequenceNr, toSequenceNr).mapZIO { ev =>
               convertInternal(ev)
             }
@@ -86,7 +86,7 @@ class FdbReadJournal(override val system: ExtendedActorSystem, sharedConfig: Con
   ): Source[EventEnvelope, NotUsed] = Source
     .future(
       unsafeRunFuture(
-        ConversionAdapters.streamToPublisher(es.currentEventsById(persistenceId, fromSequenceNr, toSequenceNr).mapZIO { ev =>
+        Adapters.streamToPublisher(es.currentEventsById(persistenceId, fromSequenceNr, toSequenceNr).mapZIO { ev =>
           convertInternal(ev)
         })
       )
@@ -98,7 +98,7 @@ class FdbReadJournal(override val system: ExtendedActorSystem, sharedConfig: Con
     Source
       .future(
         unsafeRunFuture(
-          ConversionAdapters.streamToPublisher(es.eventsByTag(tag, translatedOffset).mapZIO(convertInternal))
+          Adapters.streamToPublisher(es.eventsByTag(tag, translatedOffset).mapZIO(convertInternal))
         )
       )
       .flatMapConcat(publisher => Source.fromPublisher(publisher))
@@ -109,7 +109,7 @@ class FdbReadJournal(override val system: ExtendedActorSystem, sharedConfig: Con
     Source
       .future(
         unsafeRunFuture(
-          ConversionAdapters.streamToPublisher(es.currentEventsByTag(tag, translatedOffset).mapZIO(convertInternal))
+          Adapters.streamToPublisher(es.currentEventsByTag(tag, translatedOffset).mapZIO(convertInternal))
         )
       )
       .flatMapConcat(publisher => Source.fromPublisher(publisher))
