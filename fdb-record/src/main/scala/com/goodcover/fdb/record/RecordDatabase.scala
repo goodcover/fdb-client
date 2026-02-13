@@ -561,8 +561,8 @@ object RecordDatabase {
         } yield FdbRecordStore.cursorToZStream(cursor)
       }
 
-    def deleteRecords(tuple: Tuple)(implicit trace: Trace): Task[Unit] =
-      ZIO.fromCompletableFuture(store.deleteRecordAsync(tuple)).unit
+    def deleteRecords(tuple: Tuple)(implicit trace: Trace): Task[Boolean] =
+      ZIO.fromCompletableFuture(store.deleteRecordAsync(tuple)).map(_.booleanValue())
 
     /** This does NOT work well */
     def deleteRecordsWhere(recordType: String, query: QueryComponent)(implicit trace: Trace): Task[Unit] =
