@@ -682,8 +682,32 @@ object FdbStream {
 }
 
 /**
+ * Configuration for FoundationDB client connections.
+ *
+ * @param minConnections
+ *   Minimum number of connections to maintain in the connection pool. Default: 1
+ * @param maxConnections
+ *   Maximum number of connections allowed in the connection pool. Default: 50
  * @param apiVersion
- *   version of your database, eg. 720
+ *   FoundationDB API version to use (e.g., 710, 720). This should match your FoundationDB server version. Default: 710
+ * @param clusterFile
+ *   Path to the FoundationDB cluster file. If None, the default cluster file location will be used. Default: None
+ * @param searchClusterFile
+ *   Whether to search for the cluster file in default locations. Default: false
+ * @param _retryPolicy
+ *   Retry policy for failed operations. Format: "e<milliseconds>" for exponential backoff (e.g., "e10" = exponential starting at 10ms). Default: "e10"
+ * @param timeToLive
+ *   Time to live for database connections before they are recycled. Default: 30 seconds
+ * @param performClassLoaderFixes
+ *   Whether to perform classloader fixes for FoundationDB native library loading. This can help with classloader issues in some environments. Default: true
+ * @param warnOnUnclosed
+ *   Whether to warn when database connections are not properly closed. Useful for debugging resource leaks. Default: false
+ * @param setFdbCLibraryPath
+ *   Explicitly set the path to the FoundationDB C library (libfdb_c). If None, the library will be loaded from the default location. Default: None
+ * @param getFdbCLibraryFromEnv
+ *   Whether to get the FoundationDB C library path from environment variables. Default: true
+ * @param fdbExecutor
+ *   Optional custom executor for FoundationDB operations. If None, the default executor will be used. Default: None
  */
 case class FoundationDbConfig(
   minConnections: Int,
