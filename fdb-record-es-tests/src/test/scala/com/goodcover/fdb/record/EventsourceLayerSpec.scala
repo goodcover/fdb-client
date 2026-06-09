@@ -33,6 +33,24 @@ object EventsourceLayerSpec extends ZIOSpecDefault {
           service.currentEventsById(persistenceId, 0L, Long.MaxValue).runCollect
       } yield assertTrue(consumer.size == elements)
     },
+    test("reverse reads newest events first and honors max") {
+      val elements = 10
+      for {
+        service      <- ZIO.service[EventsourceLayer]
+        persistenceId = "pid-reverse"
+        _            <- ZStream
+                          .range(0, elements)
+                          .mapZIO(i => simpleAppend(persistenceId, i.toLong, "tagr" :: Nil).as(i.toLong))
+                          .runCollect
+        newestThree  <- service.currentEventsById(persistenceId, reverse = true, max = 3).runCollect
+        allReversed  <- service.currentEventsById(persistenceId, reverse = true).runCollect
+        forward      <- service.currentEventsById(persistenceId).runCollect
+      } yield assertTrue(
+        newestThree.map(_.sequenceNr).toList == List(9L, 8L, 7L),
+        allReversed.map(_.sequenceNr).toList == (0L until elements.toLong).reverse.toList,
+        forward.map(_.sequenceNr).toList == (0L until elements.toLong).toList,
+      )
+    },
     test("insert elements") {
       val totalElementsPerId     = 20
       val differentPersistentIds = 500
