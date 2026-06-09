@@ -146,7 +146,8 @@ class EventsourceLayer(recordDb: FdbRecordDatabase, cfg: RecordConfig, metaRef: 
     persistenceId: String,
     fromSequenceNr: Long = 0L,
     toSequenceNr: Long = Long.MaxValue,
-    max: Int = Int.MaxValue
+    max: Int = Int.MaxValue,
+    reverse: Boolean = false
   )(implicit trace: Trace): ZStream[Any, Throwable, PersistentRepr] =
     recordDb.streamAsyncContinuation { continue =>
       ZStream.unwrap {
@@ -155,12 +156,20 @@ class EventsourceLayer(recordDb: FdbRecordDatabase, cfg: RecordConfig, metaRef: 
           rc      <- ZIO.service[FdbRecordContext]
           evStore <- mkStore(rc)
           query   <- ZIO.succeed {
-                       RecordQuery
+                       val builder = RecordQuery
                          .newBuilder()
                          .setRecordType("PersistentRepr")
                          .setFilter(buildEventsRangeQuery(persistenceId, fromSequenceNr, toSequenceNr))
-                         .build()
 
+                       // Descending sequenceNr order plans as a reverse primary-key range scan (the primary key
+                       // is (recordType, persistenceId, sequenceNr) and persistenceId is an equality filter), so
+                       // newest-N reads with `max` are as cheap as oldest-N.
+                       val sorted  =
+                         if (reverse)
+                           builder.setSort(Key.Expressions.concatenateFields("persistenceId", "sequenceNr"), true)
+                         else builder
+
+                       sorted.build()
                      }
         } yield evStore
           .executeQuery(query, continue, ExecuteProperties.newBuilder().setReturnedRowLimit(max).build())
