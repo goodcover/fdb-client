@@ -1,19 +1,16 @@
 package com.goodcover.fdb.lucene
 
+import com.apple.foundationdb.record.ScanProperties
 import com.apple.foundationdb.record.lucene.*
 import com.apple.foundationdb.record.lucene.highlight.{ HighlightedTerm, LuceneHighlighting }
 import com.apple.foundationdb.record.lucene.search.LuceneQueryParserFactoryProvider
-import com.apple.foundationdb.record.metadata.{ Index, IndexTypes }
 import com.apple.foundationdb.record.provider.foundationdb.{ FDBQueriedRecord, IndexOrphanBehavior }
-import com.apple.foundationdb.record.query.RecordQuery
 import com.apple.foundationdb.record.query.expressions.{ Query, QueryComponent }
-import com.apple.foundationdb.record.query.plan.{ PlannableIndexTypes, ScanComparisons }
-import com.apple.foundationdb.record.{ EvaluationContext, ScanProperties }
 import com.goodcover.fdb.*
-import com.goodcover.fdb.record.RecordDatabase.{ FdbMetadata, FdbRecordDatabaseFactory, FdbRecordStore }
+import com.goodcover.fdb.lucene.LuceneSearch.*
+import com.goodcover.fdb.record.RecordDatabase.FdbRecordDatabaseFactory
 import com.goodcover.fdb.record.lucene.proto.LuceneTest.{ ComplexQuery, Interests }
 import com.goodcover.fdb.record.{ BaseLayer, RecordTestLayers }
-import com.google.common.collect.Sets
 import org.apache.lucene.analysis.Analyzer
 import org.apache.lucene.search.{ BooleanClause, BooleanQuery }
 import zio.*
@@ -25,13 +22,6 @@ import scala.jdk.CollectionConverters.*
 object LuceneTest extends ZIOSpecDefault {
 
   val INDEX = "ComplexQuery$text_index"
-
-  private val indexTypes = new PlannableIndexTypes(
-    Sets.newHashSet(IndexTypes.VALUE, IndexTypes.VERSION),
-    Sets.newHashSet(IndexTypes.RANK, IndexTypes.TIME_WINDOW_LEADERBOARD),
-    Sets.newHashSet(IndexTypes.TEXT),
-    Sets.newHashSet(LuceneIndexTypes.LUCENE)
-  )
 
   val registry = LuceneAnalyzerRegistryImpl.instance()
 
@@ -71,37 +61,8 @@ object LuceneTest extends ZIOSpecDefault {
   )(implicit trace: Trace): ZIO[BaseLayer, Throwable, Chunk[ComplexQuery]] =
     ZIO.serviceWithZIO[BaseLayer] { layer =>
       layer.withStoreTxn { store =>
-        val qc = new LuceneQueryComponent(
-          LuceneQueryType.QUERY,
-          text,
-          false,
-          Seq.empty.asJava,
-          true
-        )
-
-        val filter = additionalFilters match {
-          case Some(f) => Query.and(qc, f)
-          case None    => qc
-        }
-
-        val query = RecordQuery
-          .newBuilder()
-          .setRecordType("ComplexQuery")
-          .setFilter(filter)
-          .build()
-
         for {
-          planner <- ZIO.succeed(
-                       new LucenePlanner(
-                         store.metadata.metadata,
-                         store.storeState(),
-                         indexTypes,
-                         store.timer
-                       )
-                     )
-          plan    <- ZIO.succeed(planner.plan(query))
-          _       <- ZIO.collect(plan.getUsedIndexes.asScala.toList)(i => ZIO.logDebug(s"Used index: $i"))
-          results <- store.executeQuery(plan).runCollect
+          results <- store.luceneSearch("ComplexQuery", text, additionalFilter = additionalFilters).runCollect
           _       <- assertSize match {
                        case Some(v) => TestResult.liftTestResultToZIO(assertTrue(results.size == v))
                        case None    => ZIO.unit
@@ -109,18 +70,6 @@ object LuceneTest extends ZIOSpecDefault {
         } yield results.map(record => ComplexQuery.newBuilder().mergeFrom(record.record.getRecord).build())
       }
     }
-
-  def fullTextSearch(recordStore: FdbRecordStore, index: FdbMetadata => Index, search: String): LuceneScanBounds = {
-    val scan = new LuceneScanQueryParameters(
-      ScanComparisons.EMPTY,
-      new LuceneQueryMultiFieldSearchClause(LuceneQueryType.QUERY_HIGHLIGHT, search, false),
-      null,
-      null,
-      null,
-      new LuceneScanQueryParameters.LuceneQueryHighlightParameters(-1, 10)
-    )
-    scan.bind(recordStore.underlyingStore, index(recordStore.metadata), EvaluationContext.EMPTY)
-  }
 
   override def spec: Spec[TestEnvironment with Scope, Any] = (suite("LuceneTest")(
     test("basic query with multiple params") {
@@ -165,32 +114,10 @@ object LuceneTest extends ZIOSpecDefault {
                  }
 
         results <- layer.withStoreTxn { store =>
-                     val qc    =
-                       new LuceneQueryComponent(
-                         LuceneQueryType.QUERY,
-                         "text:(+hell* -dan) AND coverageAmount:[2000 TO 11000]",
-                         false,
-                         Seq.empty.asJava,
-                         true
-                       )
-                     val query = RecordQuery
-                       .newBuilder()
-                       .setRecordType("ComplexQuery")
-                       .setFilter(qc)
-                       .build()
-
-                     for {
-                       planner <- ZIO.succeed(
-                                    new LucenePlanner(
-                                      store.metadata.metadata,
-                                      store.storeState(),
-                                      indexTypes,
-                                      store.timer
-                                    )
-                                  )
-                       plan    <- ZIO.succeed(planner.plan(query))
-                       results <- store.executeQuery(plan).runCollect
-                     } yield results.map(record => ComplexQuery.newBuilder().mergeFrom(record.record.getRecord).build())
+                     store
+                       .luceneSearch("ComplexQuery", "text:(+hell* -dan) AND coverageAmount:[2000 TO 11000]")
+                       .runCollect
+                       .map(_.map(record => ComplexQuery.newBuilder().mergeFrom(record.record.getRecord).build()))
                    }
 
       } yield assertTrue( //
@@ -244,8 +171,7 @@ object LuceneTest extends ZIOSpecDefault {
 
               for {
                 sb      <- ZIO.succeed(
-                             fullTextSearch(
-                               store,
+                             store.luceneHighlightBounds(
                                _.getIndex(INDEX), // Nesting is with Underscores
                                "text:(+hell* -dan) AND coverageAmount:[2000 TO 11000] AND interests_firstName:Bill"
                              )
@@ -316,8 +242,7 @@ object LuceneTest extends ZIOSpecDefault {
 
               for {
                 sb      <- ZIO.succeed(
-                             fullTextSearch(
-                               store,
+                             store.luceneHighlightBounds(
                                _.getIndex(INDEX), // Nesting is with Underscores
                                "text:(+hell* -dan) AND coverageAmount:[* TO 200]"
                              )
@@ -385,6 +310,17 @@ object LuceneTest extends ZIOSpecDefault {
         _ <- searchQuery("bill", assertSize = Some(2))
 
       } yield assertTrue(true)
+    },
+    test("query string helpers") {
+      import LuceneSearch.LuceneQueryStrings as Q
+      assertTrue(
+        Q.term("text", "a+b") == "text:a\\+b",
+        Q.terms("key", List("a", "b")) == "key:(a OR b)",
+        Q.phrase("text", "say \"hi\"") == "text:\"say \\\"hi\\\"\"",
+        Q.prefix("text", "hel") == "text:hel*",
+        Q.allOf("a:1", "b:2") == "(a:1 AND b:2)",
+        Q.anyOf("a:1", "b:2") == "(a:1 OR b:2)",
+      )
     }
   ) @@ TestAspect.withLiveClock)
     .provideSome[FdbRecordDatabaseFactory](

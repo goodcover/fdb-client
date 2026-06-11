@@ -79,17 +79,17 @@ object RecordDatabase {
 
   /**
    * Database-level defaults applied to every [[FDBRecordContext]] opened
-   * through [[FdbRecordDatabase.runAsync]] (and therefore everything layered
-   * on top: streams, [[BaseLayer.withStoreTxn]], etc).
+   * through [[FdbRecordDatabase.runAsync]] (and therefore everything layered on
+   * top: streams, [[BaseLayer.withStoreTxn]], etc).
    *
    * @param properties
    *   record-layer properties (e.g. Lucene's `LUCENE_EXECUTOR_SERVICE`,
    *   `LUCENE_OPEN_PARALLELISM`, analyzer options) made available to every
    *   transaction without call-site churn.
    * @param configure
-   *   escape hatch to customize the rest of [[FDBRecordContextConfig]]
-   *   (timers, priorities, transaction timeouts, ...). Applied after
-   *   `properties` is set.
+   *   escape hatch to customize the rest of [[FDBRecordContextConfig]] (timers,
+   *   priorities, transaction timeouts, ...). Applied after `properties` is
+   *   set.
    */
   final case class RecordContextOptions(
     properties: RecordLayerPropertyStorage,
@@ -139,8 +139,8 @@ object RecordDatabase {
 
     /**
      * Set database-level defaults for every context opened through
-     * [[FdbRecordDatabase.runAsync]]. Databases obtained from [[db]] (before
-     * or after this call) observe the new value.
+     * [[FdbRecordDatabase.runAsync]]. Databases obtained from [[db]] (before or
+     * after this call) observe the new value.
      */
     def setContextOptions(options: RecordContextOptions): Unit = defaultContextOptions = options
 
@@ -207,13 +207,13 @@ object RecordDatabase {
       }
 
     /**
-     * Pin record-layer SPI resolution (analyzer registries, planner
-     * extensions, ...) to this library's classloader instead of the context
-     * classloader. In sbt/mill test runners and other layered-classloader
-     * environments the context classloader frequently cannot see the
-     * record-layer's `META-INF/services` entries; in production both loaders
-     * are the same, so this is harmless. Best effort: if something already
-     * triggered SPI loading or installed its own loader, leave it be.
+     * Pin record-layer SPI resolution (analyzer registries, planner extensions,
+     * ...) to this library's classloader instead of the context classloader. In
+     * sbt/mill test runners and other layered-classloader environments the
+     * context classloader frequently cannot see the record-layer's
+     * `META-INF/services` entries; in production both loaders are the same, so
+     * this is harmless. Best effort: if something already triggered SPI loading
+     * or installed its own loader, leave it be.
      */
     private[record] def pinServiceLoader(): Unit =
       try ServiceLoaderProvider.initialize(libraryServiceLoader)
@@ -256,7 +256,9 @@ object RecordDatabase {
       } yield factory
     }
 
-    /** As [[live]], but with database-level [[RecordContextOptions]] applied. */
+    /**
+     * As [[live]], but with database-level [[RecordContextOptions]] applied.
+     */
     def live(options: RecordContextOptions): ZLayer[FdbPool, Nothing, FdbRecordDatabaseFactory] =
       ZLayer.scoped {
         for {

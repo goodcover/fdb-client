@@ -38,7 +38,9 @@ object RecordTestLayers {
     )
   }
 
-  /** A [[BaseLayer]] from a factory-provided database and a [[RecordConfig]]. */
+  /**
+   * A [[BaseLayer]] from a factory-provided database and a [[RecordConfig]].
+   */
   val baseLayer: ZLayer[FdbRecordDatabaseFactory & RecordConfig, Nothing, BaseLayer] = ZLayer {
     for {
       factory  <- ZIO.service[FdbRecordDatabaseFactory]
