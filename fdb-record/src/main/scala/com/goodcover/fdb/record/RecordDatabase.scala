@@ -16,6 +16,7 @@ import com.apple.foundationdb.record.provider.foundationdb.{
   FDBMetaDataStore,
   FDBQueriedRecord,
   FDBRecordContext,
+  FDBRecordContextConfig,
   FDBRecordStore,
   FDBStoreTimer,
   FDBStoredRecord,
@@ -23,9 +24,11 @@ import com.apple.foundationdb.record.provider.foundationdb.{
   IndexScanBounds,
   OnlineIndexer
 }
+import com.apple.foundationdb.record.provider.foundationdb.properties.RecordLayerPropertyStorage
 import com.apple.foundationdb.record.query.{ ParameterRelationshipGraph, RecordQuery }
 import com.apple.foundationdb.record.query.expressions.QueryComponent
 import com.apple.foundationdb.record.query.plan.plans.RecordQueryPlan
+import com.apple.foundationdb.record.util.ServiceLoaderProvider
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.{ ByteArrayUtil2, Tuple }
 import com.apple.foundationdb.*
@@ -40,7 +43,9 @@ import zio.*
 import zio.stream.ZStream
 
 import java.lang
-import java.util.concurrent.CompletableFuture
+import java.util.ServiceLoader
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.{ CompletableFuture, ExecutorService, Executors }
 import scala.jdk.CollectionConverters.*
 import scala.jdk.FunctionConverters.*
 
@@ -72,12 +77,74 @@ object RecordDatabase {
 
   }
 
+  /**
+   * Database-level defaults applied to every [[FDBRecordContext]] opened
+   * through [[FdbRecordDatabase.runAsync]] (and therefore everything layered
+   * on top: streams, [[BaseLayer.withStoreTxn]], etc).
+   *
+   * @param properties
+   *   record-layer properties (e.g. Lucene's `LUCENE_EXECUTOR_SERVICE`,
+   *   `LUCENE_OPEN_PARALLELISM`, analyzer options) made available to every
+   *   transaction without call-site churn.
+   * @param configure
+   *   escape hatch to customize the rest of [[FDBRecordContextConfig]]
+   *   (timers, priorities, transaction timeouts, ...). Applied after
+   *   `properties` is set.
+   */
+  final case class RecordContextOptions(
+    properties: RecordLayerPropertyStorage,
+    configure: FDBRecordContextConfig.Builder => FDBRecordContextConfig.Builder,
+  ) {
+    def withProperties(props: RecordLayerPropertyStorage): RecordContextOptions = copy(properties = props)
+
+    def withConfigure(fn: FDBRecordContextConfig.Builder => FDBRecordContextConfig.Builder): RecordContextOptions =
+      copy(configure = fn)
+
+    private[record] def contextConfigBuilder: FDBRecordContextConfig.Builder =
+      configure(FDBRecordContextConfig.newBuilder().setRecordContextProperties(properties))
+  }
+
+  object RecordContextOptions {
+    val default: RecordContextOptions =
+      RecordContextOptions(RecordLayerPropertyStorage.getEmptyInstance, identity)
+  }
+
   class FdbRecordDatabaseFactory(runtime: Runtime[Any], _pool: FdbPool, id: Ref[Long]) extends FDBDatabaseFactoryImpl {
     private implicit val unsafe: Unsafe = Unsafe.unsafe(u => u)
     private val scope: Scope.Closeable  = runtime.unsafe.run(Scope.make).getOrThrow()
 
+    FdbRecordDatabaseFactory.pinServiceLoader()
+
     setStoreStateCacheFactory(MetaDataVersionStampStoreStateCacheFactory.newInstance())
     setAPIVersion(APIVersion.fromVersionNumber(_pool.config.apiVersion))
+
+    /**
+     * The record layer defaults to `ForkJoinPool.commonPool()` for all async
+     * work, which is easily starved by blocking I/O (Lucene directories,
+     * synchronous index maintenance). Own the executor instead: use the one
+     * from [[com.goodcover.fdb.FoundationDbConfig.recordExecutor]] when given,
+     * otherwise create one we shut down with the factory.
+     */
+    private val ownedExecutor: Option[ExecutorService] = _pool.config.recordExecutor match {
+      case Some(executor) =>
+        setExecutor(executor)
+        None
+      case None           =>
+        val executor = FdbRecordDatabaseFactory.defaultRecordExecutor()
+        setExecutor(executor)
+        Some(executor)
+    }
+
+    @volatile private var defaultContextOptions: RecordContextOptions = RecordContextOptions.default
+
+    /**
+     * Set database-level defaults for every context opened through
+     * [[FdbRecordDatabase.runAsync]]. Databases obtained from [[db]] (before
+     * or after this call) observe the new value.
+     */
+    def setContextOptions(options: RecordContextOptions): Unit = defaultContextOptions = options
+
+    def contextOptions: RecordContextOptions = defaultContextOptions
 
     override def initFDB(): FDB = runtime.unsafe.run {
       ZIO.attemptBlocking(_pool.fdb)
@@ -110,6 +177,8 @@ object RecordDatabase {
         }
       }
         .getOrThrow()
+
+      ownedExecutor.foreach(_.shutdown())
     }
 
     override def getDatabase(cf1: String): RFDBDatabase =
@@ -119,12 +188,63 @@ object RecordDatabase {
       _                <- id.update(_ + 1)
       openTransactions <- Ref.make(Set.empty[Long])
       blocking         <- ZIO.attemptBlocking(getDatabase(_pool.config.clusterFile.orNull))
-    } yield new FdbRecordDatabase(blocking, id, openTransactions)
+    } yield new FdbRecordDatabase(blocking, id, openTransactions, () => defaultContextOptions)
 
     def pool: FdbPool = _pool
   }
 
   object FdbRecordDatabaseFactory {
+
+    /**
+     * Stable function instance handed to [[ServiceLoaderProvider.initialize]]:
+     * the record layer compares loaders by equality, so re-initializing with
+     * the same instance is a no-op while a different one throws.
+     */
+    private val libraryServiceLoader: java.util.function.Function[Class[?], java.lang.Iterable[?]] =
+      new java.util.function.Function[Class[?], java.lang.Iterable[?]] {
+        override def apply(clazz: Class[?]): java.lang.Iterable[?] =
+          ServiceLoader.load(clazz, classOf[FdbRecordDatabaseFactory].getClassLoader)
+      }
+
+    /**
+     * Pin record-layer SPI resolution (analyzer registries, planner
+     * extensions, ...) to this library's classloader instead of the context
+     * classloader. In sbt/mill test runners and other layered-classloader
+     * environments the context classloader frequently cannot see the
+     * record-layer's `META-INF/services` entries; in production both loaders
+     * are the same, so this is harmless. Best effort: if something already
+     * triggered SPI loading or installed its own loader, leave it be.
+     */
+    private[record] def pinServiceLoader(): Unit =
+      try ServiceLoaderProvider.initialize(libraryServiceLoader)
+      catch {
+        case _: IllegalStateException => ()
+      }
+
+    /**
+     * Executor for record-layer async tasks when none is configured:
+     * virtual-thread-per-task on JDK 21+ (reflectively, the library targets
+     * Java 11), otherwise a named daemon cached thread pool.
+     */
+    private[record] def defaultRecordExecutor(): ExecutorService =
+      virtualThreadExecutor().getOrElse(cachedThreadPool())
+
+    private def virtualThreadExecutor(): Option[ExecutorService] =
+      try {
+        val method = classOf[Executors].getMethod("newVirtualThreadPerTaskExecutor")
+        Some(method.invoke(null).asInstanceOf[ExecutorService])
+      } catch {
+        case _: NoSuchMethodException => None
+      }
+
+    private def cachedThreadPool(): ExecutorService = {
+      val counter = new AtomicLong(0L)
+      Executors.newCachedThreadPool { (r: Runnable) =>
+        val t = new Thread(r, s"fdb-record-async-${counter.getAndIncrement()}")
+        t.setDaemon(true)
+        t
+      }
+    }
 
     val live: ZLayer[FdbPool, Nothing, FdbRecordDatabaseFactory] = ZLayer.scoped {
       for {
@@ -135,9 +255,23 @@ object RecordDatabase {
         _       <- ZIO.addFinalizer(ZIO.attemptBlocking(factory.shutdown()).orDie)
       } yield factory
     }
+
+    /** As [[live]], but with database-level [[RecordContextOptions]] applied. */
+    def live(options: RecordContextOptions): ZLayer[FdbPool, Nothing, FdbRecordDatabaseFactory] =
+      ZLayer.scoped {
+        for {
+          factory <- live.build.map(_.get[FdbRecordDatabaseFactory])
+          _       <- ZIO.succeed(factory.setContextOptions(options))
+        } yield factory
+      }
   }
 
-  class FdbRecordDatabase(db: RFDBDatabase, private[record] val idRef: Ref[Long], openTransactions: Ref[Set[Long]]) {
+  class FdbRecordDatabase(
+    db: RFDBDatabase,
+    private[record] val idRef: Ref[Long],
+    openTransactions: Ref[Set[Long]],
+    defaultContextOptions: () => RecordContextOptions = () => RecordContextOptions.default,
+  ) {
 
     /**
      * We do a lot of stuff across boundaries, but take care to make it not
@@ -222,6 +356,12 @@ object RecordDatabase {
       runAsync[R, A](ZIO.serviceWithZIO[FdbRecordContext](fn))
 
     def runAsync[R, A](fn: => ZIO[FdbRecordContext & R, Throwable, A])(implicit trace: Trace): ZIO[R, Throwable, A] =
+      runAsync[R, A](defaultContextOptions())(fn)
+
+    /** As [[runAsync]], but with explicit per-call [[RecordContextOptions]]. */
+    def runAsync[R, A](options: RecordContextOptions)(
+      fn: => ZIO[FdbRecordContext & R, Throwable, A]
+    )(implicit trace: Trace): ZIO[R, Throwable, A] =
       ZIO.scoped[R] {
         for {
           runtime <- ZIO.runtime[R]
@@ -245,7 +385,12 @@ object RecordDatabase {
                             cf.asInstanceOf[CompletableFuture[? <: A]]
 
                           }.asJava
-          result       <- ZIO.fromCompletableFuture[A](db.runAsync[A](functionToRun))
+          result       <- ZIO.fromCompletableFuture[A] {
+                            // Mirrors FDBDatabase.runAsync, but with a context config so
+                            // database-level properties reach every transaction.
+                            val runner = db.newRunner(options.contextConfigBuilder)
+                            runner.runAsync[A](functionToRun).whenComplete((_, _) => runner.close())
+                          }
         } yield result
       }
 

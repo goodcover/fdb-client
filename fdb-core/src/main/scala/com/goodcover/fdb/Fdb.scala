@@ -708,6 +708,11 @@ object FdbStream {
  *   Whether to get the FoundationDB C library path from environment variables. Default: true
  * @param fdbExecutor
  *   Optional custom executor for FoundationDB operations. If None, the default executor will be used. Default: None
+ * @param recordExecutor
+ *   Optional custom executor for record-layer asynchronous tasks (everything downstream of FDBDatabaseFactory). If
+ *   None, the record layer creates and owns a dedicated executor: virtual-thread-per-task on JDK 21+, otherwise a
+ *   named daemon cached thread pool. This replaces the JDK common pool default, which is easily starved by blocking
+ *   work (e.g. Lucene index I/O). Default: None
  */
 case class FoundationDbConfig(
   minConnections: Int,
@@ -722,6 +727,7 @@ case class FoundationDbConfig(
   setFdbCLibraryPath: Option[String],
   getFdbCLibraryFromEnv: Boolean,
   fdbExecutor: Option[Executor],
+  recordExecutor: Option[Executor],
 ) {
   def withClusterFile(cf: Option[String]): FoundationDbConfig = copy(clusterFile = cf)
 
@@ -751,6 +757,7 @@ object FoundationDbConfig {
     setFdbCLibraryPath = None,
     getFdbCLibraryFromEnv = true,
     fdbExecutor = None,
+    recordExecutor = None,
   )
 
   final val MIN_CONNECTIONS            = "minconnections"
