@@ -1,9 +1,7 @@
 package com.goodcover.fdb.lucene
 
 import com.apple.foundationdb.record.lucene.synonym.{ EnglishSynonymMapConfig, SynonymMapRegistryImpl }
-import com.goodcover.fdb.record.RecordDatabase.{ FdbMetadata, FdbRecordDatabase }
-import com.goodcover.fdb.record.{ BaseLayer, RecordConfig }
-import zio.{ Ref, ZIO, ZLayer }
+import zio.{ ZIO, ZLayer }
 
 object FdbLuceneLayers {
 
@@ -19,20 +17,4 @@ object FdbLuceneLayers {
     } yield ()
 
   }
-
-  class LuceneLayer(
-    override protected val recordDb: FdbRecordDatabase,
-    override protected val cfg: RecordConfig,
-    override protected val metaRef: Ref[Option[FdbMetadata]]
-  ) extends BaseLayer(recordDb, cfg, metaRef)
-
-  object LuceneLayer {
-    def apply(
-      recordDb: FdbRecordDatabase,
-      cfg: RecordConfig,
-      metaRef: Ref[Option[FdbMetadata]]
-    ): LuceneLayer =
-      new LuceneLayer(recordDb, cfg, metaRef)
-  }
-
 }

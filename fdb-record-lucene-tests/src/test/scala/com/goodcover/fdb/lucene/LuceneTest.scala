@@ -4,17 +4,15 @@ import com.apple.foundationdb.record.lucene.*
 import com.apple.foundationdb.record.lucene.highlight.{ HighlightedTerm, LuceneHighlighting }
 import com.apple.foundationdb.record.lucene.search.LuceneQueryParserFactoryProvider
 import com.apple.foundationdb.record.metadata.{ Index, IndexTypes }
-import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpaceDirectory
 import com.apple.foundationdb.record.provider.foundationdb.{ FDBQueriedRecord, IndexOrphanBehavior }
 import com.apple.foundationdb.record.query.RecordQuery
 import com.apple.foundationdb.record.query.expressions.{ Query, QueryComponent }
 import com.apple.foundationdb.record.query.plan.{ PlannableIndexTypes, ScanComparisons }
 import com.apple.foundationdb.record.{ EvaluationContext, ScanProperties }
 import com.goodcover.fdb.*
-import com.goodcover.fdb.lucene.FdbLuceneLayers.LuceneLayer
 import com.goodcover.fdb.record.RecordDatabase.{ FdbMetadata, FdbRecordDatabaseFactory, FdbRecordStore }
 import com.goodcover.fdb.record.lucene.proto.LuceneTest.{ ComplexQuery, Interests }
-import com.goodcover.fdb.record.{ RecordConfig, RecordKeySpace }
+import com.goodcover.fdb.record.{ BaseLayer, RecordTestLayers }
 import com.google.common.collect.Sets
 import org.apache.lucene.analysis.Analyzer
 import org.apache.lucene.search.{ BooleanClause, BooleanQuery }
@@ -70,8 +68,8 @@ object LuceneTest extends ZIOSpecDefault {
     text: String,
     additionalFilters: Option[QueryComponent] = None,
     assertSize: Option[Int] = None
-  )(implicit trace: Trace): ZIO[LuceneLayer, Throwable, Chunk[ComplexQuery]] =
-    ZIO.serviceWithZIO[LuceneLayer] { layer =>
+  )(implicit trace: Trace): ZIO[BaseLayer, Throwable, Chunk[ComplexQuery]] =
+    ZIO.serviceWithZIO[BaseLayer] { layer =>
       layer.withStoreTxn { store =>
         val qc = new LuceneQueryComponent(
           LuceneQueryType.QUERY,
@@ -127,7 +125,7 @@ object LuceneTest extends ZIOSpecDefault {
   override def spec: Spec[TestEnvironment with Scope, Any] = (suite("LuceneTest")(
     test("basic query with multiple params") {
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <- layer.withStoreTxn { store =>
                    for {
                      _ <-
@@ -202,7 +200,7 @@ object LuceneTest extends ZIOSpecDefault {
     },
     test("highlight query with multiple params") {
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <-
           layer.withStoreTxn { store =>
             for {
@@ -274,7 +272,7 @@ object LuceneTest extends ZIOSpecDefault {
     },
     test("highlight query different syntax") {
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <-
           layer.withStoreTxn { store =>
             for {
@@ -347,7 +345,7 @@ object LuceneTest extends ZIOSpecDefault {
     test("use metadata queries") {
 
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <-
           layer.withStoreTxn { store =>
             for {
@@ -389,51 +387,14 @@ object LuceneTest extends ZIOSpecDefault {
       } yield assertTrue(true)
     }
   ) @@ TestAspect.withLiveClock)
-    .provideSome[FdbRecordDatabaseFactory with FdbDatabase](
-      TestId.layer >+> ConfigLayer >+> FdbSpecLayers.suiteSubspaceLayer >+> TestKeySpace.live >+> ClearAll
+    .provideSome[FdbRecordDatabaseFactory](
+      TestId.layer >+>
+        RecordTestLayers.configLayer(LuceneMetadata.build(), LuceneMetadata.descriptor) >+>
+        RecordTestLayers.baseLayer >+>
+        RecordTestLayers.clearAllOnClose
     )
     .provideShared(
       FdbSpecLayers.sharedLayer ++ FdbLuceneLayers.suiteLayer >+> FdbRecordDatabaseFactory.live
     )
-
-  /**
-   * Clears all records from the LuceneLayer. This is a scoped layer that will
-   * delete all records when the layer is closed.
-   */
-  def ClearAll: ZLayer[FdbRecordDatabaseFactory with LuceneLayer, Nothing, Unit] =
-    ZLayer.scoped {
-      for {
-
-        ll <- ZIO.service[LuceneLayer]
-        _  <- ZIO.addFinalizer {
-                Unsafe.unsafe { implicit unsafe =>
-                  ll.unsafeDeleteAllRecords.orDie
-                }
-              }
-      } yield ()
-
-    }
-
-  def ConfigLayer(implicit fn: sourcecode.FullName): ZLayer[TestId with FdbRecordDatabaseFactory, Nothing, LuceneLayer] =
-    ZLayer.scoped {
-      for {
-        testKeySpace <- ZIO.service[TestId]
-        id            = testKeySpace.id
-        pathPerTest   = s"${fn.value}:$id:${com.goodcover.fdb.BuildInfo.scalaVersion}"
-        factory      <- ZIO.service[FdbRecordDatabaseFactory]
-        db           <- factory.db.orDie
-
-        directory = new KeySpaceDirectory(s"tests", KeySpaceDirectory.KeyType.STRING, pathPerTest)
-        _        <- ZIO.logDebug(s"provisioning the following path '$pathPerTest' in keyspaceDirectory '$directory''")
-        ks        = RecordKeySpace.makeDefaultConfig(directory)
-        rc        = new RecordConfig(
-                      ks,
-                      FdbMetadata(LuceneMetadata.build(), ks.tablePath),
-                      LuceneMetadata.descriptor,
-                      persistLocalMetadata = true
-                    )
-        ref      <- Ref.make(Option.empty[FdbMetadata])
-      } yield LuceneLayer(db, rc, ref)
-    }
 
 }
