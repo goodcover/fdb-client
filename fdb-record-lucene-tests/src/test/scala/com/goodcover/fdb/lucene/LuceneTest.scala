@@ -12,6 +12,7 @@ import com.goodcover.fdb.record.RecordDatabase.FdbRecordDatabaseFactory
 import com.goodcover.fdb.record.lucene.proto.LuceneTest.{ ComplexQuery, Interests }
 import com.goodcover.fdb.record.{ BaseLayer, RecordTestLayers }
 import org.apache.lucene.analysis.Analyzer
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
 import org.apache.lucene.search.{ BooleanClause, BooleanQuery }
 import zio.*
 import zio.test.*
@@ -52,6 +53,18 @@ object LuceneTest extends ZIOSpecDefault {
   private def analyzers = {
     val standardAnalyzerSupplier = () => LuceneAnalyzerWrapper.getStandardAnalyzerWrapper.getAnalyzer
     standardAnalyzerSupplier
+  }
+
+  /** Collect the terms an analyzer produces for a field/text pair. */
+  private def analyze(analyzer: Analyzer, field: String, text: String): List[String] = {
+    val stream = analyzer.tokenStream(field, text)
+    val term   = stream.addAttribute(classOf[CharTermAttribute])
+    stream.reset()
+    val tokens = scala.collection.mutable.ListBuffer.empty[String]
+    while (stream.incrementToken()) tokens += term.toString
+    stream.end()
+    stream.close()
+    tokens.toList
   }
 
   private def searchQuery(
@@ -310,6 +323,61 @@ object LuceneTest extends ZIOSpecDefault {
         _ <- searchQuery("bill", assertSize = Some(2))
 
       } yield assertTrue(true)
+    },
+    test("email field uses the email-aware analyzer") {
+      for {
+        layer <- ZIO.service[BaseLayer]
+        _     <- layer.withStoreTxn { store =>
+                   for {
+                     _ <- store.saveRecord(
+                            ComplexQuery
+                              .newBuilder()
+                              .setId("1")
+                              .setText("Hello my name is dan! I really like going over to the well.")
+                              .setEmail("dan@goodcover.com")
+                              .setCoverageAmount(100)
+                              .build()
+                          )
+                     _ <- store.saveRecord(
+                            ComplexQuery
+                              .newBuilder()
+                              .setId("2")
+                              .setText("Hello my name is bill! I really like going over to the well.")
+                              .setEmail("bill@example.org")
+                              .setCoverageAmount(1_000)
+                              .build()
+                          )
+                   } yield ()
+                 }
+
+        // Both analyzers keep the address whole (the record layer's "STANDARD"
+        // wrapper is really UAX29URLEmailAnalyzer), so the exact address finds
+        // only its record either way...
+        exact <- searchQuery(LuceneSearch.LuceneQueryStrings.term("email", "dan@goodcover.com"))
+        // ...but only SYNONYM_EMAIL also generates word parts
+        // (WordDelimiterFilter with GENERATE_WORD_PARTS | PRESERVE_ORIGINAL),
+        // so a fragment like the local part matches through the override.
+        part  <- searchQuery("email:bill")
+
+        // Token-level proof that the per-field option routed the email field
+        // to the email-aware analyzer: it indexes the parts alongside the
+        // whole address, while the default analyzer indexes only the whole.
+        indexAnalyzer = registry
+                          .getLuceneAnalyzerCombinationProvider(
+                            LuceneMetadata.build().getIndex(INDEX),
+                            LuceneAnalyzerType.FULL_TEXT,
+                            java.util.Collections.emptyMap()
+                          )
+                          .provideIndexAnalyzer()
+                          .getAnalyzer
+        emailTokens   = analyze(indexAnalyzer, "email", "dan@goodcover.com")
+        textTokens    = analyze(indexAnalyzer, "text", "dan@goodcover.com")
+      } yield assertTrue(
+        exact.map(_.getId) == Chunk("1"),
+        part.map(_.getId) == Chunk("2"),
+        emailTokens.toSet == Set("dan@goodcover.com", "dan", "goodcover", "com"),
+        textTokens == List("dan@goodcover.com"),
+      )
     },
     test("query string helpers") {
       import LuceneSearch.LuceneQueryStrings as Q
