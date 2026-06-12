@@ -24,7 +24,7 @@ object Versions {
   val betterMonadicFor   = "0.3.1"
   val fdbRecord          = "4.9.6.0"
   val foundationDb       = "7.3.71"
-  val lucene             = "8.11.4"
+  val lucene             = "10.4.0"
   val logback            = "1.5.34"
   val pekko              = "1.4.0"
   val jsoniterScala      = "2.38.14"
