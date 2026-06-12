@@ -164,7 +164,7 @@ class EventsourceLayer(recordDb: FdbRecordDatabase, cfg: RecordConfig, metaRef: 
                        // Descending sequenceNr order plans as a reverse primary-key range scan (the primary key
                        // is (recordType, persistenceId, sequenceNr) and persistenceId is an equality filter), so
                        // newest-N reads with `max` are as cheap as oldest-N.
-                       val sorted  =
+                       val sorted =
                          if (reverse)
                            builder.setSort(Key.Expressions.concatenateFields("persistenceId", "sequenceNr"), true)
                          else builder

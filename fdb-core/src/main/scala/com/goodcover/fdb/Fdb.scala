@@ -120,9 +120,9 @@ object FdbPool {
 
     searchedCluster.map { searched =>
       sys.env
-        .get(FDB_CLUSTER_FILE) // Env priority
+        .get(FDB_CLUSTER_FILE)   // Env priority
         .orElse(cfg.clusterFile) // Config file next
-        .orElse(searched) // Searched config file
+        .orElse(searched)        // Searched config file
     }
   }
 
