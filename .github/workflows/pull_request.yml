@@ -18,7 +18,7 @@ jobs:
       matrix:
         # Update scala-version in build.mill as well
         scala-version: ["2.13.18", "3.3.7"]
-        spark-version: ["3.5.8", "4.0.1"]
+        spark-version: ["3.5.8", "4.0.3"]
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
