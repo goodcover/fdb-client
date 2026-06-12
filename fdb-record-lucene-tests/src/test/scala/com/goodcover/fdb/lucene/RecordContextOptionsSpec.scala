@@ -24,18 +24,22 @@ object RecordContextOptionsSpec extends ZIOSpecDefault {
 
   override def spec: Spec[TestEnvironment with Scope, Any] = (suite("RecordContextOptionsSpec")(
     test("database-level properties reach every transaction") {
-      ZIO.serviceWithZIO[BaseLayer] { layer =>
-        layer.withStoreTxn { store =>
-          ZIO.succeed(store.underlyingStore.getContext.getPropertyStorage.getPropertyValue(testProp))
+      ZIO
+        .serviceWithZIO[BaseLayer] { layer =>
+          layer.withStoreTxn { store =>
+            ZIO.succeed(store.underlyingStore.getContext.getPropertyStorage.getPropertyValue(testProp))
+          }
         }
-      }.map(value => assertTrue(value == "configured"))
+        .map(value => assertTrue(value == "configured"))
     },
     test("record-layer async work does not run on the JDK common pool") {
-      ZIO.serviceWithZIO[BaseLayer] { layer =>
-        layer.withStoreTxn { store =>
-          ZIO.succeed(store.underlyingStore.getExecutor)
+      ZIO
+        .serviceWithZIO[BaseLayer] { layer =>
+          layer.withStoreTxn { store =>
+            ZIO.succeed(store.underlyingStore.getExecutor)
+          }
         }
-      }.map(executor => assertTrue(executor ne ForkJoinPool.commonPool()))
+        .map(executor => assertTrue(executor ne ForkJoinPool.commonPool()))
     },
   ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
     .provideSome[FdbRecordDatabaseFactory](
