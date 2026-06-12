@@ -723,10 +723,11 @@ object FdbStream {
  * @param recordExecutor
  *   Optional custom executor for record-layer asynchronous tasks (everything
  *   downstream of FDBDatabaseFactory). If None, the record layer creates and
- *   owns a dedicated executor: virtual-thread-per-task on JDK 21+, otherwise a
- *   named daemon cached thread pool. This replaces the JDK common pool default,
- *   which is easily starved by blocking work (e.g. Lucene index I/O). Default:
- *   None
+ *   owns a dedicated executor: virtual-thread-per-task on JDK 24+ (earlier JDKs
+ *   pin carriers when blocking inside synchronized sections, see JEP 491),
+ *   otherwise a named daemon cached thread pool. This replaces the JDK common
+ *   pool default, which is easily starved by blocking work (e.g. Lucene index
+ *   I/O). Default: None
  */
 case class FoundationDbConfig(
   minConnections: Int,

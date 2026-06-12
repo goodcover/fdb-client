@@ -223,19 +223,25 @@ object RecordDatabase {
 
     /**
      * Executor for record-layer async tasks when none is configured:
-     * virtual-thread-per-task on JDK 21+ (reflectively, the library targets
+     * virtual-thread-per-task on JDK 24+ (reflectively, the library targets
      * Java 11), otherwise a named daemon cached thread pool.
      */
     private[record] def defaultRecordExecutor(): ExecutorService =
       virtualThreadExecutor().getOrElse(cachedThreadPool())
 
     private def virtualThreadExecutor(): Option[ExecutorService] =
-      try {
-        val method = classOf[Executors].getMethod("newVirtualThreadPerTaskExecutor")
-        Some(method.invoke(null).asInstanceOf[ExecutorService])
-      } catch {
-        case _: Exception => None
-      }
+      // Until JDK 24 (JEP 491) a virtual thread blocking inside a synchronized
+      // section pins its carrier; Lucene blocks on FDB I/O inside synchronized
+      // sections, which deadlocks small carrier pools (e.g. 4-core CI
+      // runners). Only use virtual threads where pinning is solved.
+      if (java.lang.Runtime.version().feature() < 24) None
+      else
+        try {
+          val method = classOf[Executors].getMethod("newVirtualThreadPerTaskExecutor")
+          Some(method.invoke(null).asInstanceOf[ExecutorService])
+        } catch {
+          case _: Exception => None
+        }
 
     private def cachedThreadPool(): ExecutorService = {
       val counter = new AtomicLong(0L)
