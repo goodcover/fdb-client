@@ -234,7 +234,7 @@ object RecordDatabase {
         val method = classOf[Executors].getMethod("newVirtualThreadPerTaskExecutor")
         Some(method.invoke(null).asInstanceOf[ExecutorService])
       } catch {
-        case _: NoSuchMethodException => None
+        case _: Exception => None
       }
 
     private def cachedThreadPool(): ExecutorService = {
@@ -387,12 +387,9 @@ object RecordDatabase {
                             cf.asInstanceOf[CompletableFuture[? <: A]]
 
                           }.asJava
-          result       <- ZIO.fromCompletableFuture[A] {
-                            // Mirrors FDBDatabase.runAsync, but with a context config so
-                            // database-level properties reach every transaction.
-                            val runner = db.newRunner(options.contextConfigBuilder)
-                            runner.runAsync[A](functionToRun).whenComplete((_, _) => runner.close())
-                          }
+          runner       <- ZIO.attempt(db.newRunner(options.contextConfigBuilder))
+          _            <- ZIO.addFinalizer(ZIO.succeed(runner.close()))
+          result       <- ZIO.fromCompletableFuture[A](runner.runAsync[A](functionToRun))
         } yield result
       }
 

@@ -96,14 +96,14 @@ object LuceneSearch {
      * transaction.
      *
      * @param limit
-     *   maximum number of rows returned; 0 means unlimited.
+     *   maximum number of rows returned; Int.MaxValue means unlimited.
      * @param continuation
      *   resume from a previous [[Continuable]] continuation.
      */
     def luceneSearch(
       recordType: String,
       query: String,
-      limit: Int = 0,
+      limit: Int = Int.MaxValue,
       continuation: Array[Byte] = null,
       fields: Seq[String] = Nil,
       additionalFilter: Option[QueryComponent] = None,
