@@ -94,7 +94,7 @@ object TagOrderingSpec extends ZIOSpecDefault {
       )
 
     }
-  ) @@ TestAspect.withLiveClock)
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
     .provideSome[FdbRecordDatabaseFactory](
       TestId.layer >+>
         (SharedTestLayers.ConfigLayer >+> EventsourceLayer.live) >+> SharedTestLayers.ClearAll

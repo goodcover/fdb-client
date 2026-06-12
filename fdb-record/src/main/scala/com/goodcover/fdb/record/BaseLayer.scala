@@ -12,13 +12,20 @@ class BaseLayer(
   protected val cfg: RecordConfig,
   protected val metaRef: Ref[Option[FdbMetadata]]
 ) {
-  protected def getMetaData(implicit trace: Trace): UIO[FdbMetadata] =
+
+  /**
+   * Resolve the metadata for this store: cached, else loaded from the meta
+   * keyspace, else the locally-built metadata. Whatever wins is cached so
+   * subsequent transactions skip the remote load.
+   */
+  def getMetaData(implicit trace: Trace): UIO[FdbMetadata] =
     for {
       result <-
         metaRef.get.some
           .orElse(loadMetadata.some)
           .orElseFail(cfg.localMetadata)
           .merge
+      _      <- metaRef.setAsync(Some(result))
     } yield result
 
   protected def loadMetadata(implicit trace: Trace): Task[Option[FdbMetadata]] =
@@ -130,5 +137,25 @@ class BaseLayer(
         _  <- ZIO.logInfo(s"Deleted metaStore ${cfg.metaPath}")
 
       } yield ()
+    }
+}
+
+object BaseLayer {
+
+  /**
+   * The `RecordConfig => store` primitive: builds the metadata cache and the
+   * layer around it, so consumers don't hand-roll the
+   * `mkStore`/`getMetaData`/`metaRef` dance.
+   */
+  def make(recordDb: FdbRecordDatabase, cfg: RecordConfig)(implicit trace: Trace): UIO[BaseLayer] =
+    Ref.make(Option.empty[FdbMetadata]).map(new BaseLayer(recordDb, cfg, _))
+
+  val layer: ZLayer[FdbRecordDatabase & RecordConfig, Nothing, BaseLayer] =
+    ZLayer {
+      for {
+        recordDb <- ZIO.service[FdbRecordDatabase]
+        cfg      <- ZIO.service[RecordConfig]
+        base     <- make(recordDb, cfg)
+      } yield base
     }
 }

@@ -2,7 +2,12 @@ package com.goodcover.fdb.lucene
 
 import com.apple.foundationdb.record.RecordMetaData
 import com.apple.foundationdb.record.lucene.synonym.SynonymAnalyzer
-import com.apple.foundationdb.record.lucene.{ LuceneFunctionNames, LuceneIndexOptions, LuceneIndexTypes }
+import com.apple.foundationdb.record.lucene.{
+  EmailCjkSynonymAnalyzerFactory,
+  LuceneFunctionNames,
+  LuceneIndexOptions,
+  LuceneIndexTypes
+}
 import com.apple.foundationdb.record.metadata.Key.Expressions.*
 import com.apple.foundationdb.record.metadata.expressions.KeyExpression.FanType
 import com.apple.foundationdb.record.metadata.{ Index, Key }
@@ -36,6 +41,7 @@ object LuceneMetadata {
         concat(
           function(LuceneFunctionNames.LUCENE_TEXT, field("text")),
           function(LuceneFunctionNames.LUCENE_SORTED, field("coverageAmount")),
+          function(LuceneFunctionNames.LUCENE_TEXT, field("email")),
           field("interests", FanType.FanOut).nest( //
             function(LuceneFunctionNames.LUCENE_TEXT, field("firstName")),
             function(LuceneFunctionNames.LUCENE_TEXT, field("lastName")),
@@ -51,6 +57,8 @@ object LuceneMetadata {
         ImmutableMap.of(
           LuceneIndexOptions.LUCENE_ANALYZER_NAME_OPTION,
           SynonymAnalyzer.QueryOnlySynonymAnalyzerFactory.ANALYZER_FACTORY_NAME,
+          LuceneIndexOptions.LUCENE_ANALYZER_NAME_PER_FIELD_OPTION,
+          s"email:${EmailCjkSynonymAnalyzerFactory.ANALYZER_FACTORY_NAME}",
           LuceneIndexOptions.OPTIMIZED_STORED_FIELDS_FORMAT_ENABLED,
           "true",
         )

@@ -23,11 +23,18 @@ object SharedTestLayers {
     } yield EventsourceConfig.makeDefaultConfig(directory)
   }
 
+  /**
+   * Deletes all records when the suite scope opens and again when it closes.
+   * The pre-clean matters because the keyspace path is deterministic per spec:
+   * a run that dies without running finalizers (CI timeout, kill -9) leaves
+   * data behind that would poison the next run.
+   */
   lazy val ClearAll: ZLayer[EventsourceLayer, Nothing, Any] = ZLayer.scoped {
     for {
       es <- ZIO.service[EventsourceLayer]
       _  <- Unsafe.unsafe { implicit unsafe =>
-              ZIO.addFinalizer(es.unsafeDeleteAllRecords.orDie)
+              es.unsafeDeleteAllRecords.orDie *>
+                ZIO.addFinalizer(es.unsafeDeleteAllRecords.orDie)
             }
     } yield ()
   }

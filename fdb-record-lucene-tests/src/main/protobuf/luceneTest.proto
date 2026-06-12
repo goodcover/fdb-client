@@ -24,6 +24,7 @@ message ComplexQuery {
   int32 coverageAmount = 3;
   repeated Interests interests = 4;
   repeated Entry metadata = 5;
+  string email = 6;
 }
 
 

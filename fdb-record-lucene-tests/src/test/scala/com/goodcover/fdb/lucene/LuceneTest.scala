@@ -1,22 +1,18 @@
 package com.goodcover.fdb.lucene
 
+import com.apple.foundationdb.record.ScanProperties
 import com.apple.foundationdb.record.lucene.*
 import com.apple.foundationdb.record.lucene.highlight.{ HighlightedTerm, LuceneHighlighting }
 import com.apple.foundationdb.record.lucene.search.LuceneQueryParserFactoryProvider
-import com.apple.foundationdb.record.metadata.{ Index, IndexTypes }
-import com.apple.foundationdb.record.provider.foundationdb.keyspace.KeySpaceDirectory
 import com.apple.foundationdb.record.provider.foundationdb.{ FDBQueriedRecord, IndexOrphanBehavior }
-import com.apple.foundationdb.record.query.RecordQuery
 import com.apple.foundationdb.record.query.expressions.{ Query, QueryComponent }
-import com.apple.foundationdb.record.query.plan.{ PlannableIndexTypes, ScanComparisons }
-import com.apple.foundationdb.record.{ EvaluationContext, ScanProperties }
 import com.goodcover.fdb.*
-import com.goodcover.fdb.lucene.FdbLuceneLayers.LuceneLayer
-import com.goodcover.fdb.record.RecordDatabase.{ FdbMetadata, FdbRecordDatabaseFactory, FdbRecordStore }
+import com.goodcover.fdb.lucene.LuceneSearch.*
+import com.goodcover.fdb.record.RecordDatabase.FdbRecordDatabaseFactory
 import com.goodcover.fdb.record.lucene.proto.LuceneTest.{ ComplexQuery, Interests }
-import com.goodcover.fdb.record.{ RecordConfig, RecordKeySpace }
-import com.google.common.collect.Sets
+import com.goodcover.fdb.record.{ BaseLayer, RecordTestLayers }
 import org.apache.lucene.analysis.Analyzer
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute
 import org.apache.lucene.search.{ BooleanClause, BooleanQuery }
 import zio.*
 import zio.test.*
@@ -27,13 +23,6 @@ import scala.jdk.CollectionConverters.*
 object LuceneTest extends ZIOSpecDefault {
 
   val INDEX = "ComplexQuery$text_index"
-
-  private val indexTypes = new PlannableIndexTypes(
-    Sets.newHashSet(IndexTypes.VALUE, IndexTypes.VERSION),
-    Sets.newHashSet(IndexTypes.RANK, IndexTypes.TIME_WINDOW_LEADERBOARD),
-    Sets.newHashSet(IndexTypes.TEXT),
-    Sets.newHashSet(LuceneIndexTypes.LUCENE)
-  )
 
   val registry = LuceneAnalyzerRegistryImpl.instance()
 
@@ -66,44 +55,27 @@ object LuceneTest extends ZIOSpecDefault {
     standardAnalyzerSupplier
   }
 
+  /** Collect the terms an analyzer produces for a field/text pair. */
+  private def analyze(analyzer: Analyzer, field: String, text: String): List[String] = {
+    val stream = analyzer.tokenStream(field, text)
+    val term   = stream.addAttribute(classOf[CharTermAttribute])
+    stream.reset()
+    val tokens = scala.collection.mutable.ListBuffer.empty[String]
+    while (stream.incrementToken()) tokens += term.toString
+    stream.end()
+    stream.close()
+    tokens.toList
+  }
+
   private def searchQuery(
     text: String,
     additionalFilters: Option[QueryComponent] = None,
     assertSize: Option[Int] = None
-  )(implicit trace: Trace): ZIO[LuceneLayer, Throwable, Chunk[ComplexQuery]] =
-    ZIO.serviceWithZIO[LuceneLayer] { layer =>
+  )(implicit trace: Trace): ZIO[BaseLayer, Throwable, Chunk[ComplexQuery]] =
+    ZIO.serviceWithZIO[BaseLayer] { layer =>
       layer.withStoreTxn { store =>
-        val qc = new LuceneQueryComponent(
-          LuceneQueryType.QUERY,
-          text,
-          false,
-          Seq.empty.asJava,
-          true
-        )
-
-        val filter = additionalFilters match {
-          case Some(f) => Query.and(qc, f)
-          case None    => qc
-        }
-
-        val query = RecordQuery
-          .newBuilder()
-          .setRecordType("ComplexQuery")
-          .setFilter(filter)
-          .build()
-
         for {
-          planner <- ZIO.succeed(
-                       new LucenePlanner(
-                         store.metadata.metadata,
-                         store.storeState(),
-                         indexTypes,
-                         store.timer
-                       )
-                     )
-          plan    <- ZIO.succeed(planner.plan(query))
-          _       <- ZIO.collect(plan.getUsedIndexes.asScala.toList)(i => ZIO.logDebug(s"Used index: $i"))
-          results <- store.executeQuery(plan).runCollect
+          results <- store.luceneSearch("ComplexQuery", text, additionalFilter = additionalFilters).runCollect
           _       <- assertSize match {
                        case Some(v) => TestResult.liftTestResultToZIO(assertTrue(results.size == v))
                        case None    => ZIO.unit
@@ -112,22 +84,10 @@ object LuceneTest extends ZIOSpecDefault {
       }
     }
 
-  def fullTextSearch(recordStore: FdbRecordStore, index: FdbMetadata => Index, search: String): LuceneScanBounds = {
-    val scan = new LuceneScanQueryParameters(
-      ScanComparisons.EMPTY,
-      new LuceneQueryMultiFieldSearchClause(LuceneQueryType.QUERY_HIGHLIGHT, search, false),
-      null,
-      null,
-      null,
-      new LuceneScanQueryParameters.LuceneQueryHighlightParameters(-1, 10)
-    )
-    scan.bind(recordStore.underlyingStore, index(recordStore.metadata), EvaluationContext.EMPTY)
-  }
-
   override def spec: Spec[TestEnvironment with Scope, Any] = (suite("LuceneTest")(
     test("basic query with multiple params") {
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <- layer.withStoreTxn { store =>
                    for {
                      _ <-
@@ -167,32 +127,10 @@ object LuceneTest extends ZIOSpecDefault {
                  }
 
         results <- layer.withStoreTxn { store =>
-                     val qc    =
-                       new LuceneQueryComponent(
-                         LuceneQueryType.QUERY,
-                         "text:(+hell* -dan) AND coverageAmount:[2000 TO 11000]",
-                         false,
-                         Seq.empty.asJava,
-                         true
-                       )
-                     val query = RecordQuery
-                       .newBuilder()
-                       .setRecordType("ComplexQuery")
-                       .setFilter(qc)
-                       .build()
-
-                     for {
-                       planner <- ZIO.succeed(
-                                    new LucenePlanner(
-                                      store.metadata.metadata,
-                                      store.storeState(),
-                                      indexTypes,
-                                      store.timer
-                                    )
-                                  )
-                       plan    <- ZIO.succeed(planner.plan(query))
-                       results <- store.executeQuery(plan).runCollect
-                     } yield results.map(record => ComplexQuery.newBuilder().mergeFrom(record.record.getRecord).build())
+                     store
+                       .luceneSearch("ComplexQuery", "text:(+hell* -dan) AND coverageAmount:[2000 TO 11000]")
+                       .runCollect
+                       .map(_.map(record => ComplexQuery.newBuilder().mergeFrom(record.record.getRecord).build()))
                    }
 
       } yield assertTrue( //
@@ -202,7 +140,7 @@ object LuceneTest extends ZIOSpecDefault {
     },
     test("highlight query with multiple params") {
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <-
           layer.withStoreTxn { store =>
             for {
@@ -246,8 +184,7 @@ object LuceneTest extends ZIOSpecDefault {
 
               for {
                 sb      <- ZIO.succeed(
-                             fullTextSearch(
-                               store,
+                             store.luceneHighlightBounds(
                                _.getIndex(INDEX), // Nesting is with Underscores
                                "text:(+hell* -dan) AND coverageAmount:[2000 TO 11000] AND interests_firstName:Bill"
                              )
@@ -274,7 +211,7 @@ object LuceneTest extends ZIOSpecDefault {
     },
     test("highlight query different syntax") {
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <-
           layer.withStoreTxn { store =>
             for {
@@ -318,8 +255,7 @@ object LuceneTest extends ZIOSpecDefault {
 
               for {
                 sb      <- ZIO.succeed(
-                             fullTextSearch(
-                               store,
+                             store.luceneHighlightBounds(
                                _.getIndex(INDEX), // Nesting is with Underscores
                                "text:(+hell* -dan) AND coverageAmount:[* TO 200]"
                              )
@@ -347,7 +283,7 @@ object LuceneTest extends ZIOSpecDefault {
     test("use metadata queries") {
 
       for {
-        layer <- ZIO.service[LuceneLayer]
+        layer <- ZIO.service[BaseLayer]
         _     <-
           layer.withStoreTxn { store =>
             for {
@@ -387,53 +323,82 @@ object LuceneTest extends ZIOSpecDefault {
         _ <- searchQuery("bill", assertSize = Some(2))
 
       } yield assertTrue(true)
+    },
+    test("email field uses the email-aware analyzer") {
+      for {
+        layer <- ZIO.service[BaseLayer]
+        _     <- layer.withStoreTxn { store =>
+                   for {
+                     _ <- store.saveRecord(
+                            ComplexQuery
+                              .newBuilder()
+                              .setId("1")
+                              .setText("Hello my name is dan! I really like going over to the well.")
+                              .setEmail("dan@goodcover.com")
+                              .setCoverageAmount(100)
+                              .build()
+                          )
+                     _ <- store.saveRecord(
+                            ComplexQuery
+                              .newBuilder()
+                              .setId("2")
+                              .setText("Hello my name is bill! I really like going over to the well.")
+                              .setEmail("bill@example.org")
+                              .setCoverageAmount(1_000)
+                              .build()
+                          )
+                   } yield ()
+                 }
+
+        // Both analyzers keep the address whole (the record layer's "STANDARD"
+        // wrapper is really UAX29URLEmailAnalyzer), so the exact address finds
+        // only its record either way...
+        exact <- searchQuery(LuceneSearch.LuceneQueryStrings.term("email", "dan@goodcover.com"))
+        // ...but only SYNONYM_EMAIL also generates word parts
+        // (WordDelimiterFilter with GENERATE_WORD_PARTS | PRESERVE_ORIGINAL),
+        // so a fragment like the local part matches through the override.
+        part  <- searchQuery("email:bill")
+
+        // Token-level proof that the per-field option routed the email field
+        // to the email-aware analyzer: it indexes the parts alongside the
+        // whole address, while the default analyzer indexes only the whole.
+        indexAnalyzer = registry
+                          .getLuceneAnalyzerCombinationProvider(
+                            LuceneMetadata.build().getIndex(INDEX),
+                            LuceneAnalyzerType.FULL_TEXT,
+                            java.util.Collections.emptyMap()
+                          )
+                          .provideIndexAnalyzer()
+                          .getAnalyzer
+        emailTokens   = analyze(indexAnalyzer, "email", "dan@goodcover.com")
+        textTokens    = analyze(indexAnalyzer, "text", "dan@goodcover.com")
+      } yield assertTrue(
+        exact.map(_.getId) == Chunk("1"),
+        part.map(_.getId) == Chunk("2"),
+        emailTokens.toSet == Set("dan@goodcover.com", "dan", "goodcover", "com"),
+        textTokens == List("dan@goodcover.com"),
+      )
+    },
+    test("query string helpers") {
+      import LuceneSearch.LuceneQueryStrings as Q
+      assertTrue(
+        Q.term("text", "a+b") == "text:a\\+b",
+        Q.terms("key", List("a", "b")) == "key:(a OR b)",
+        Q.phrase("text", "say \"hi\"") == "text:\"say \\\"hi\\\"\"",
+        Q.prefix("text", "hel") == "text:hel*",
+        Q.allOf("a:1", "b:2") == "(a:1 AND b:2)",
+        Q.anyOf("a:1", "b:2") == "(a:1 OR b:2)",
+      )
     }
-  ) @@ TestAspect.withLiveClock)
-    .provideSome[FdbRecordDatabaseFactory with FdbDatabase](
-      TestId.layer >+> ConfigLayer >+> FdbSpecLayers.suiteSubspaceLayer >+> TestKeySpace.live >+> ClearAll
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
+    .provideSome[FdbRecordDatabaseFactory](
+      TestId.layer >+>
+        RecordTestLayers.configLayer(LuceneMetadata.build(), LuceneMetadata.descriptor) >+>
+        RecordTestLayers.baseLayer >+>
+        RecordTestLayers.clearAll
     )
     .provideShared(
       FdbSpecLayers.sharedLayer ++ FdbLuceneLayers.suiteLayer >+> FdbRecordDatabaseFactory.live
     )
-
-  /**
-   * Clears all records from the LuceneLayer. This is a scoped layer that will
-   * delete all records when the layer is closed.
-   */
-  def ClearAll: ZLayer[FdbRecordDatabaseFactory with LuceneLayer, Nothing, Unit] =
-    ZLayer.scoped {
-      for {
-
-        ll <- ZIO.service[LuceneLayer]
-        _  <- ZIO.addFinalizer {
-                Unsafe.unsafe { implicit unsafe =>
-                  ll.unsafeDeleteAllRecords.orDie
-                }
-              }
-      } yield ()
-
-    }
-
-  def ConfigLayer(implicit fn: sourcecode.FullName): ZLayer[TestId with FdbRecordDatabaseFactory, Nothing, LuceneLayer] =
-    ZLayer.scoped {
-      for {
-        testKeySpace <- ZIO.service[TestId]
-        id            = testKeySpace.id
-        pathPerTest   = s"${fn.value}:$id:${com.goodcover.fdb.BuildInfo.scalaVersion}"
-        factory      <- ZIO.service[FdbRecordDatabaseFactory]
-        db           <- factory.db.orDie
-
-        directory = new KeySpaceDirectory(s"tests", KeySpaceDirectory.KeyType.STRING, pathPerTest)
-        _        <- ZIO.logDebug(s"provisioning the following path '$pathPerTest' in keyspaceDirectory '$directory''")
-        ks        = RecordKeySpace.makeDefaultConfig(directory)
-        rc        = new RecordConfig(
-                      ks,
-                      FdbMetadata(LuceneMetadata.build(), ks.tablePath),
-                      LuceneMetadata.descriptor,
-                      persistLocalMetadata = true
-                    )
-        ref      <- Ref.make(Option.empty[FdbMetadata])
-      } yield LuceneLayer(db, rc, ref)
-    }
 
 }
