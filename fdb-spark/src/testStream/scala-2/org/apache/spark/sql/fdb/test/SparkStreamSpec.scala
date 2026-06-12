@@ -30,7 +30,7 @@ import zio.{ Chunk, Exit, Random, Runtime, Trace, Unsafe, ZIO, ZLayer }
 import java.nio.file.Paths
 import scala.concurrent.Future
 
-class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutures  {
+class SparkStreamSpec extends StreamTest with SharedSparkSession with ScalaFutures {
 
   override implicit def patienceConfig: PatienceConfig = PatienceConfig(600.seconds)
 

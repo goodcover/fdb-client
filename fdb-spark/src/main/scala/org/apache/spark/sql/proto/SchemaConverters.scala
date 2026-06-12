@@ -172,7 +172,7 @@ object SchemaConverters extends Logging {
       case dt: MapType         => StructField(fd.getName, dt)
       case dt if fd.isRepeated =>
         StructField(fd.getName, ArrayType(dt, containsNull = true)) // CHANGE-0: Made this more flexible
-      case dt                  => StructField(fd.getName, dt, nullable = !fd.isRequired)
+      case dt => StructField(fd.getName, dt, nullable = !fd.isRequired)
     }
   }
 }

@@ -15,7 +15,7 @@ object TestFdbLogger extends ZLogger[String, Unit] {
     context: FiberRefs,
     spans0: List[LogSpan],
     annotations: Map[String, String]
-  ): Unit = {
+  ): Unit                        = {
     val sb = new StringBuilder()
 
     val color = logLevel match {
