@@ -41,7 +41,7 @@ object Versions {
   val sourcecode         = "0.4.4"
   val spark              = "3.5.8"
   val spark4             = "4.0.1"
-  val sparkEncoders      = "0.2.0.2"
+  val sparkEncoders      = "0.2.2.1"
   val scalatest          = "3.2.16"
   val zio                = "2.1.24"
   val zioReactiveStreams = "2.0.2"
