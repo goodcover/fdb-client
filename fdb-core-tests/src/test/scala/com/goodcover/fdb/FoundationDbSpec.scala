@@ -212,7 +212,7 @@ object FoundationDbSpec extends ZIOSpecDefault {
           }
       } yield assertTrue(result.nonEmpty && result.exists(_.nonEmpty))
     }
-  ) @@ TestAspect.withLiveClock)
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
     .provideSome[FdbDatabase & FdbStream](
       FdbSpecLayers.suiteSubspaceLayer >+> TestKeySpace.live
     )

@@ -390,12 +390,12 @@ object LuceneTest extends ZIOSpecDefault {
         Q.anyOf("a:1", "b:2") == "(a:1 OR b:2)",
       )
     }
-  ) @@ TestAspect.withLiveClock)
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
     .provideSome[FdbRecordDatabaseFactory](
       TestId.layer >+>
         RecordTestLayers.configLayer(LuceneMetadata.build(), LuceneMetadata.descriptor) >+>
         RecordTestLayers.baseLayer >+>
-        RecordTestLayers.clearAllOnClose
+        RecordTestLayers.clearAll
     )
     .provideShared(
       FdbSpecLayers.sharedLayer ++ FdbLuceneLayers.suiteLayer >+> FdbRecordDatabaseFactory.live

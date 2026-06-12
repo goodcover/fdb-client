@@ -37,12 +37,12 @@ object RecordContextOptionsSpec extends ZIOSpecDefault {
         }
       }.map(executor => assertTrue(executor ne ForkJoinPool.commonPool()))
     },
-  ) @@ TestAspect.withLiveClock)
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
     .provideSome[FdbRecordDatabaseFactory](
       TestId.layer >+>
         RecordTestLayers.configLayer(LuceneMetadata.build(), LuceneMetadata.descriptor) >+>
         RecordTestLayers.baseLayer >+>
-        RecordTestLayers.clearAllOnClose
+        RecordTestLayers.clearAll
     )
     .provideShared(
       FdbSpecLayers.sharedLayer >+> FdbRecordDatabaseFactory.live(options)

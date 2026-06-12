@@ -50,13 +50,23 @@ object RecordTestLayers {
     } yield base
   }
 
-  /** Deletes the store and its metadata when the suite scope closes. */
-  val clearAllOnClose: ZLayer[BaseLayer, Nothing, Unit] = ZLayer.scoped {
+  /**
+   * Deletes the store and its metadata when the suite scope opens and again
+   * when it closes. The pre-clean matters because the keyspace path is
+   * deterministic per spec: a run that dies without running finalizers (CI
+   * timeout, kill -9) leaves data behind that would poison the next run.
+   */
+  val clearAll: ZLayer[BaseLayer, Nothing, Unit] = ZLayer.scoped {
     for {
       base <- ZIO.service[BaseLayer]
       _    <- Unsafe.unsafe { implicit unsafe =>
-                ZIO.addFinalizer(base.unsafeDeleteAllRecords.orDie)
+                base.unsafeDeleteAllRecords.orDie *>
+                  ZIO.addFinalizer(base.unsafeDeleteAllRecords.orDie)
               }
     } yield ()
   }
+
+  /** Use [[clearAll]]: it also pre-cleans leftovers from killed runs. */
+  @deprecated("use clearAll, which also cleans up leftovers from killed runs", "0.5.3")
+  val clearAllOnClose: ZLayer[BaseLayer, Nothing, Unit] = clearAll
 }

@@ -331,7 +331,7 @@ object EventsourceLayerSpec extends ZIOSpecDefault {
         lm.nonEmpty,
       )
     }
-  ) @@ TestAspect.withLiveClock)
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(2.minutes))
     .provideSome[FdbRecordDatabaseFactory](
       TestId.layer >+>
         (SharedTestLayers.ConfigLayer >>> EventsourceLayer.live) >+> SharedTestLayers.ClearAll
