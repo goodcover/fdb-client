@@ -319,6 +319,43 @@ object EventsourceLayerSpec extends ZIOSpecDefault {
         ss2b.nonEmpty,
       )
     },
+    test("delete snapshots without invalidating the query cursor") {
+      val max            = 100
+      val deletedThrough = 75L
+      val persistenceId  = "snapshot-delete-query"
+      for {
+        service   <- ZIO.service[EventsourceLayer]
+        _         <- ZStream
+                       .range(0, max)
+                       .mapZIO { i =>
+                         service.saveSnapshot(
+                           Snapshot.of(persistenceId, i.toLong, i.toLong, ByteString.EMPTY, None, None, Map.empty)
+                         )
+                       }
+                       .runDrain
+        _         <- service.deleteSnapshot(
+                       persistenceId,
+                       SnapshotSelectionCriteria(
+                         maxSequenceNr = deletedThrough,
+                         maxTimestamp = deletedThrough
+                       )
+                     )
+        deleted   <- service
+                       .selectLatestSnapshot(
+                         persistenceId,
+                         SnapshotSelectionCriteria(
+                           maxSequenceNr = deletedThrough,
+                           maxTimestamp = deletedThrough
+                         )
+                       )
+                       .runCollect
+        remaining <- service.selectLatestSnapshot(persistenceId, SnapshotSelectionCriteria()).runCollect
+
+      } yield assertTrue(
+        deleted.isEmpty,
+        remaining.map(_.sequenceNr) == Seq(max.toLong - 1),
+      )
+    },
     test("save/load metadata") {
       for {
         service <- ZIO.service[EventsourceLayer]
