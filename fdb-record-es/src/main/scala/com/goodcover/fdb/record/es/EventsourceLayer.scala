@@ -653,6 +653,18 @@ class EventsourceLayer(recordDb: FdbRecordDatabase, cfg: RecordConfig, metaRef: 
       selectSnapshot(persistenceId, continue, ss, 1)
     }
 
+  private def deleteQueryResults(store: FdbRecordStore, query: RecordQuery)(implicit trace: Trace): Task[Unit] =
+    for {
+      // Drain the index-backed query before deleting anything. Otherwise a
+      // pipelined record fetch can observe an index entry after an earlier
+      // deletion has removed its backing record in the same transaction.
+      primaryKeys <- store
+                       .executeQuery(query)
+                       .map(_.record.getPrimaryKey)
+                       .runCollect
+      _           <- ZIO.foreachParDiscard(primaryKeys)(store.deleteRecords).withParallelism(4)
+    } yield ()
+
   /**
    * Deletes a single snapshot from the event store based on its persistenceId
    * and sequenceNr. This method creates a transaction.
@@ -681,12 +693,7 @@ class EventsourceLayer(recordDb: FdbRecordDatabase, cfg: RecordConfig, metaRef: 
             )
             .build()
         }
-        _     <- store
-                   .executeQuery(query)
-                   .mapZIOPar(4) { qr =>
-                     store.deleteRecords(qr.record.getPrimaryKey)
-                   }
-                   .runDrain
+        _     <- deleteQueryResults(store, query)
       } yield ()
     }
 
@@ -711,12 +718,7 @@ class EventsourceLayer(recordDb: FdbRecordDatabase, cfg: RecordConfig, metaRef: 
             )
             .build()
         }
-        _     <- store
-                   .executeQuery(query)
-                   .mapZIOPar(4) { qr =>
-                     store.deleteRecords(qr.record.getPrimaryKey)
-                   }
-                   .runDrain
+        _     <- deleteQueryResults(store, query)
       } yield ()
     }
 
