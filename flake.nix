@@ -29,6 +29,8 @@
 
         foundation73 = pkgs.callPackage ./nix/fdb { };
 
+        mill = pkgs.callPackage ./nix/mill { jdk = graalpkgs.graalvm-ce; };
+
         # FDB vars and packages only for Linux
         FDB_LIBRARY_PATH_FDB_C = if isLinux then "${foundation73.fdb-client-lib-dir}/libfdb_c.so.${foundation73.fdb-client-lib-dir.version}" else "";
 
@@ -39,7 +41,7 @@
         devShell = pkgs.mkShell ({
           buildInputs = [
             graalpkgs.graalvm-ce
-            pkgs.mill
+            mill
           ] ++ fdbPkgs;
 
           JAVA_OPTS = ''${lib.optionalString (FDB_LIBRARY_PATH_FDB_C != "") "-DFDB_LIBRARY_PATH_FDB_C=${FDB_LIBRARY_PATH_FDB_C}"}
