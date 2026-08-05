@@ -41,7 +41,7 @@ object Versions {
   val scoverage          = "2.5.2"
   val sourcecode         = "0.4.4"
   val spark              = "3.5.8"
-  val spark4             = "4.0.1"
+  val spark4             = "4.1.0"
   val sparkEncoders      = "0.2.2.1"
   val scalatest          = "3.2.20"
   val zio                = "2.1.26"
@@ -436,6 +436,8 @@ trait FdbRecordEsPekkoItModule extends CommonTests {
 object `fdb-spark` extends Cross[FdbSparkModule](Versions.sparkMatrix)
 
 trait FdbSparkModule extends CommonModule with Cross.Module2[String, String] { outer =>
+  override def JavaVersion: String = Versions.SparkJavaVersion
+
   def sparkVersion: String = crossValue2
   def moduleDeps           = Seq(`fdb-core`(), `fdb-record-es`())
   def testModuleDeps       = Seq(`fdb-core-tests`(), `fdb-record-es-tests`())
