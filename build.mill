@@ -46,7 +46,7 @@ object Versions {
   val scalatest          = "3.2.20"
   val zio                = "2.1.26"
   val zioReactiveStreams = "2.0.2"
-  val scalapb            = "0.11.20"
+  val scalapb            = "0.11.21"
 
   val JavaVersion      = "11"
   val SparkJavaVersion = "17"
