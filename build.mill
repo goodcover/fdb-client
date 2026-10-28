@@ -28,7 +28,7 @@ object Versions {
   val lucene             = "8.11.4"
   val logback            = "1.6.6"
   val pekko              = "1.6.0"
-  val jsoniterScala      = "2.42.0"
+  val jsoniterScala      = "2.42.1"
   val kindProjector      = "0.13.4"
   val pprint             = "0.9.6"
   val protobuf           = "3.25.9"
